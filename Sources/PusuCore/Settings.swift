@@ -56,6 +56,7 @@ public final class SettingsStore: ObservableObject {
         case notificationsEnabled = "pusu.notificationsEnabled"
         case showCountdown = "pusu.showCountdown"
         case remoteLockOnBlackout = "pusu.remoteLockOnBlackout"
+        case clickTogglesSession = "pusu.clickTogglesSession"
         case hotkeyPreset = "pusu.hotkeyPreset"
         case fallbackSleepDisabledOriginal = "pusu.fallbackSleepDisabledOriginal"
         case fallbackSleepDisabledActive = "pusu.fallbackSleepDisabledActive"
@@ -103,6 +104,11 @@ public final class SettingsStore: ObservableObject {
     @Published public var remoteLockOnBlackout: Bool {
         didSet { save(remoteLockOnBlackout, .remoteLockOnBlackout); onChange?() }
     }
+    /// Menü çubuğu simgesine (sol) tıklamak Pusu'yu açıp kapatır; menü sağ tıkla açılır.
+    /// Kapalıysa tıklama menüyü açar.
+    @Published public var clickTogglesSession: Bool {
+        didSet { save(clickTogglesSession, .clickTogglesSession); onChange?() }
+    }
     @Published public var hotkeyPreset: HotKeyPreset {
         didSet { save(hotkeyPreset.rawValue, .hotkeyPreset); onChange?() }
     }
@@ -136,6 +142,7 @@ public final class SettingsStore: ObservableObject {
         self.notificationsEnabled = defaults.object(forKey: Key.notificationsEnabled.rawValue) as? Bool ?? true
         self.showCountdown = defaults.object(forKey: Key.showCountdown.rawValue) as? Bool ?? true
         self.remoteLockOnBlackout = defaults.object(forKey: Key.remoteLockOnBlackout.rawValue) as? Bool ?? true
+        self.clickTogglesSession = defaults.object(forKey: Key.clickTogglesSession.rawValue) as? Bool ?? true
 
         let rawHotkey = defaults.string(forKey: Key.hotkeyPreset.rawValue)
         self.hotkeyPreset = rawHotkey.flatMap(HotKeyPreset.init(rawValue:)) ?? .ctrlOptCmdA

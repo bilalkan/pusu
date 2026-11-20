@@ -95,6 +95,10 @@ runChecks("Settings") {
     expectEqual(store.batteryCutoffPercent, 10, "varsayılan pil yüzdesi")
     expectEqual(store.defaultDuration, .indefinite, "varsayılan süre")
     expectEqual(store.hotkeyPreset, .ctrlOptCmdA, "varsayılan kısayol")
+    expect(store.clickTogglesSession, "varsayılan: simgeye tıklama aç/kapat")
+    store.clickTogglesSession = false
+    expect(!SettingsStore(defaults: defaults).clickTogglesSession, "tıklama ayarı kalıcı")
+    store.clickTogglesSession = true
 
     store.keepDisplayAwake = false
     store.keepSessionUnlocked = true

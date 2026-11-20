@@ -109,7 +109,7 @@ Requires macOS 13 Ventura or later, on Apple silicon or Intel.
 
 ## Using Pusu
 
-Click the keyhole in the menu bar. The icon tells you the state at a glance: off, awake, on a timer (a ring that drains), lid mode, or remote access.
+**Click** the keyhole in the menu bar to turn Pusu on or off. **Right-click** it (or Control-click) for the menu: durations, lid mode, remote access and settings. If you'd rather have a click open the menu, change it in Settings. The icon tells you the state at a glance: off, awake, on a timer (a ring that drains), lid mode, or remote access.
 
 ```bash
 pusu on 90          # stay awake for 90 minutes (also: 2h, 1h30m)

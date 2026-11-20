@@ -63,10 +63,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.delegate = self
         menu.autoenablesItems = false
-        statusItem.menu = menu
+        // Menü kalıcı olarak bağlanmaz: sol tık aç/kapat, sağ tık (veya Control-tık) menü.
+        button.target = self
+        button.action = #selector(statusButtonClicked(_:))
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.imagePosition = .imageLeading
         button.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         button.setAccessibilityLabel("Pusu")
+        button.setAccessibilityCustomActions([
+            NSAccessibilityCustomAction(name: L("Menüyü göster", "Show menu"), target: self, selector: #selector(showMenuAccessibilityAction)),
+        ])
 
         session.objectWillChange
             .sink { [weak self] _ in
@@ -138,6 +144,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if session.remoteBlankActive { tooltip += L(" · ekran kapalı", " · display off") }
         if let battery = session.battery, battery.isPresent {
             tooltip += " · \(battery.powerLabel)"
+        }
+        if settings.clickTogglesSession {
+            tooltip += "\n" + L("Tıkla: aç/kapat · Sağ tık: menü", "Click: on/off · Right-click: menu")
         }
         if button.toolTip != tooltip {
             button.toolTip = tooltip
@@ -435,6 +444,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
         image?.isTemplate = true
         return image
+    }
+
+    // MARK: - Click handling
+
+    @objc private func statusButtonClicked(_ sender: Any?) {
+        let event = NSApp.currentEvent
+        let wantsMenu = event?.type == .rightMouseUp
+            || event?.modifierFlags.contains(.control) == true
+            || !settings.clickTogglesSession
+        if wantsMenu {
+            showMenu()
+        } else {
+            actions.toggle()
+        }
+    }
+
+    /// Menüyü yalnızca gösterirken bağlar; böylece sol tık eylem olarak kalır.
+    private func showMenu() {
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func showMenuAccessibilityAction() -> Bool {
+        showMenu()
+        return true
     }
 
     // MARK: - Actions

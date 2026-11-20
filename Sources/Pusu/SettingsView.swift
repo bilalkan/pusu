@@ -834,6 +834,16 @@ private struct PreferencesTabView: View {
             subtitle: L("Pusu'yu menüyü açmadan kontrol edin.", "Control Pusu without opening the menu.")
         ) {
             SettingRow(
+                title: L("Simgeye tıklayınca aç/kapat", "Click the icon to turn on/off"),
+                subtitle: L(
+                    "Menü çubuğu simgesine tıklamak Pusu'yu açıp kapatır; menü sağ tıkla (veya Control-tık) açılır. Kapalıysa tıklama menüyü açar.",
+                    "Clicking the menu bar icon turns Pusu on or off; right-click (or Control-click) opens the menu. When off, a click opens the menu."
+                )
+            ) {
+                SettingsToggle(title: L("Simgeye tıklayınca aç/kapat", "Click the icon to turn on/off"), isOn: $settings.clickTogglesSession)
+            }
+            Divider()
+            SettingRow(
                 title: L("Global kısayol", "Global shortcut"),
                 subtitle: L("Pusu'yu herhangi bir uygulamadan açıp kapatır.", "Turns Pusu on or off from any app.")
             ) {

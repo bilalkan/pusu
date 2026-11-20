@@ -463,11 +463,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ? ""
             : L(" \(settings.hotkeyPreset.title) ile açıp kapatabilirsiniz.", " Press \(settings.hotkeyPreset.title) to turn it on or off.")
         alert.informativeText = L("""
-        Pusu'yu menü çubuğundaki anahtar deliği simgesinden yönetin.\(shortcut)
+        Menü çubuğundaki anahtar deliği simgesine tıklayarak Pusu'yu açıp kapatın; sağ tıkla menüyü açın.\(shortcut)
 
         Kapak kapalıyken uyanık kalmak (kapak modu) yönetici izni ister. İsterseniz Ayarlar › Sistem'den küçük bir yardımcı kurup parolayı tek seferle sınırlayabilirsiniz.
         """, """
-        Control Pusu from the keyhole icon in the menu bar.\(shortcut)
+        Click the keyhole icon in the menu bar to turn Pusu on or off; right-click it for the menu.\(shortcut)
 
         Staying awake with the lid closed (lid mode) needs administrator permission. You can install a small helper from Settings › System so you're only asked once.
         """)

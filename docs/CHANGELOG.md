@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3 — 2026-11-20
+
+- Click the menu bar icon to turn Pusu on or off; right-click (or Control-click) opens the menu. You can switch back to "click opens the menu" in Settings. The icon's tooltip and the welcome message explain it, and VoiceOver offers a "Show menu" action.
+
 ## 1.0.2 — 2026-11-20
 
 - `brew upgrade` keeps the privileged helper: no password prompt during upgrades and no need to reinstall the helper afterwards. (Upgrading from 1.0.1 still removes it once, because Homebrew uses the old version's uninstall steps.)

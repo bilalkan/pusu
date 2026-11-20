@@ -109,7 +109,7 @@ macOS 13 Ventura veya üstü gerekir; Apple silicon ya da Intel.
 
 ## Kullanım
 
-Menü çubuğundaki anahtar deliğine tıkla. Simge durumu bir bakışta gösterir: kapalı, uyanık, süreli (azalan halka), kapak modu ya da uzak erişim.
+Menü çubuğundaki anahtar deliğine **tıkla**: Pusu açılır ya da kapanır. **Sağ tıkla** (veya Control-tık): menü açılır; süreler, kapak modu, uzak erişim ve ayarlar oradadır. Tıklamanın menüyü açmasını istersen Ayarlar'dan değiştirebilirsin. Simge durumu bir bakışta gösterir: kapalı, uyanık, süreli (azalan halka), kapak modu ya da uzak erişim.
 
 ```bash
 pusu on 90          # 90 dakika uyanık kal (ayrıca: 2h, 1h30m, 1s30d)
