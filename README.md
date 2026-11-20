@@ -32,7 +32,9 @@ Requires macOS 13 Ventura or later. Universal: Apple silicon and Intel.
 ### Homebrew
 
 ```bash
-brew install --cask bilalkan/tap/pusu
+brew tap bilalkan/tap
+brew trust bilalkan/tap     # Homebrew asks you to trust third-party taps once
+brew install --cask pusu
 ```
 
 This also installs the `pusu` command.

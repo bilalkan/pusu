@@ -32,7 +32,9 @@ macOS 13 Ventura veya üstü gerekir. Universal: Apple silicon ve Intel.
 ### Homebrew
 
 ```bash
-brew install --cask bilalkan/tap/pusu
+brew tap bilalkan/tap
+brew trust bilalkan/tap     # Homebrew, üçüncü taraf tap'lere bir kez güvenmeni ister
+brew install --cask pusu
 ```
 
 Bu komut `pusu` komut satırı aracını da kurar.
