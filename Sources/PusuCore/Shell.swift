@@ -80,25 +80,20 @@ public enum Shell {
         )
     }
 
-    /// Runs a multi-line shell script as root after the standard macOS authorization prompt.
+    /// Çok satırlı bir kabuk betiğini standart macOS yönetici parolası penceresinden sonra root olarak çalıştırır.
+    ///
+    /// Betik diske yazılmaz: `osascript`'e argüman olarak verilir ve `do shell script` ile
+    /// `/bin/sh -c` üzerinden çalışır. Böylece aynı kullanıcının başka bir süreci, parola
+    /// penceresi açıkken root'un çalıştıracağı içeriği değiştiremez.
     @discardableResult
     public static func runAsAdmin(script: String) -> CommandResult {
-        let fileManager = FileManager.default
-        let scriptURL = fileManager.temporaryDirectory
-            .appendingPathComponent("pusu-admin-\(UUID().uuidString).sh")
-        let body = "#!/bin/sh\nset -eu\n\(script)\n"
-
-        do {
-            try body.write(to: scriptURL, atomically: true, encoding: .utf8)
-            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
-        } catch {
-            return CommandResult(status: -1, stdout: "", stderr: error.localizedDescription)
-        }
-        defer { try? fileManager.removeItem(at: scriptURL) }
-
-        let quotedPath = shellQuote(scriptURL.path)
-        let appleScript = "do shell script \"/bin/sh \(quotedPath)\" with administrator privileges"
-        let result = run("/usr/bin/osascript", ["-e", appleScript], timeout: 180)
+        let body = "set -eu\n\(script)\n"
+        let result = run("/usr/bin/osascript", [
+            "-e", "on run argv",
+            "-e", "do shell script (item 1 of argv) with administrator privileges",
+            "-e", "end run",
+            body,
+        ], timeout: 180)
 
         if result.timedOut {
             return CommandResult(

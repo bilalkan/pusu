@@ -283,6 +283,7 @@ runChecks("Helper version") { runHelperVersionChecks() }
 runChecks("Localization") { runLocalizationChecks() }
 runChecks("Clock format") { runClockFormatChecks() }
 runChecks("Shell timeout") { runShellTimeoutChecks() }
+runChecks("Security policy") { runSecurityPolicyChecks() }
 
 // MARK: - SessionController
 

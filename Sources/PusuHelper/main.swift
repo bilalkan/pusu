@@ -108,9 +108,12 @@ private func handleClient(_ client: Int32) {
         log("getpeereid failed")
         return
     }
-    // The socket is mode 0660 root:admin. Filesystem permissions are the
-    // authorization boundary; keep the peer identity in the log for auditing.
-    log("peer uid=\(uid) gid=\(gid)")
+    // Soket 0660 root:admin; buna ek olarak yalnızca root ve o an konsolda (ekran başında)
+    // oturum açmış kullanıcı kabul edilir. Diğer admin hesaplarının süreçleri reddedilir.
+    guard uid == 0 || uid == consoleUserID() else {
+        log("rejected peer uid=\(uid) gid=\(gid)")
+        return
+    }
 
     // Komutlar kısa sabit kelimelerdir; 256 bayttan uzun girdiyi okumayız.
     var buffer = [UInt8](repeating: 0, count: 256)
@@ -123,12 +126,33 @@ private func handleClient(_ client: Int32) {
     let command = String(decoding: line, as: UTF8.self)
         .trimmingCharacters(in: .whitespacesAndNewlines)
     let result = handle(command: command)
+    if command == HelperCommand.lidOn.rawValue || command == HelperCommand.lidOff.rawValue {
+        log("\(command) by uid=\(uid) -> ok=\(result.ok) sleepDisabled=\(result.sleepDisabled)")
+    }
 
     guard var data = try? JSONEncoder().encode(result) else { return }
     data.append(0x0A)
     data.withUnsafeBytes { bytes in
         _ = write(client, bytes.baseAddress, bytes.count)
     }
+}
+
+/// Konsol (ekran başı) kullanıcısının uid'i; giriş ekranındaysa root.
+private func consoleUserID() -> uid_t {
+    var info = stat()
+    guard stat("/dev/console", &info) == 0 else { return 0 }
+    return info.st_uid
+}
+
+/// Log dosyası sınırsız büyümesin: 512 KB'ı aşarsa baştan başlat.
+private func trimLogIfNeeded() {
+    let path = HelperProtocol.logPath
+    guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+          let size = attributes[.size] as? NSNumber, size.intValue > 512 * 1024
+    else { return }
+    _ = ftruncate(STDERR_FILENO, 0)
+    _ = lseek(STDERR_FILENO, 0, SEEK_SET)
+    log("log truncated (was \(size.intValue) bytes)")
 }
 
 private func serve() -> Never {
@@ -139,11 +163,16 @@ private func serve() -> Never {
 
     signal(SIGPIPE, SIG_IGN)
     umask(0o007)
+    trimLogIfNeeded()
+
+    // Bağlantılar ve SIGTERM aynı seri kuyrukta işlenir: kapanış, yarım kalmış bir
+    // lid-on komutuyla yarışamaz.
+    let queue = DispatchQueue(label: "local.kan.pusu.helper")
 
     // launchd yardımcıyı durdurduğunda (kaldırma, `launchctl bootout`, Homebrew uninstall)
     // kapak modu açık kalmasın: SleepDisabled'ı kaydedilen eski değerine döndür.
     signal(SIGTERM, SIG_IGN)
-    let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
+    let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: queue)
     termination.setEventHandler {
         if let original = readOriginal() {
             _ = setSleepDisabled(original)
@@ -187,18 +216,20 @@ private func serve() -> Never {
         exit(4)
     }
 
-    chmod(path, 0o660)
-    let adminGID = getgrnam("admin")?.pointee.gr_gid ?? 80
-    chown(path, 0, adminGID)
-
     guard listen(server, 16) == 0 else {
         log("listen failed: \(String(cString: strerror(errno)))")
         close(server)
         exit(5)
     }
 
+    if chmod(path, 0o660) != 0 || chown(path, 0, getgrnam("admin")?.pointee.gr_gid ?? 80) != 0 {
+        log("socket permissions could not be set: \(String(cString: strerror(errno)))")
+        exit(6)
+    }
+
     log("pusu-helper \(helperVersion) listening on \(path)")
-    while true {
+    let acceptSource = DispatchSource.makeReadSource(fileDescriptor: server, queue: queue)
+    acceptSource.setEventHandler {
         var clientAddress = sockaddr_un()
         var length = socklen_t(MemoryLayout<sockaddr_un>.size)
         let client = withUnsafeMutablePointer(to: &clientAddress) { pointer in
@@ -206,9 +237,13 @@ private func serve() -> Never {
                 accept(server, sockaddrPointer, &length)
             }
         }
-        if client < 0 { continue }
+        guard client >= 0 else { return }
         handleClient(client)
         close(client)
+    }
+    acceptSource.resume()
+    withExtendedLifetime((termination, acceptSource)) {
+        dispatchMain()
     }
 }
 

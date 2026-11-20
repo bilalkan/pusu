@@ -61,8 +61,22 @@ enum LaunchAtLogin {
         }
     }
 
+    /// Uygulama geçici bir yerden (indirilen .dmg, App Translocation, İndirilenler) açıldıysa
+    /// giriş öğesini oraya yönlendirmeyelim.
+    static var bundleIsInStableLocation: Bool {
+        let path = Bundle.main.bundlePath
+        if path.contains("/AppTranslocation/") || path.hasPrefix("/Volumes/") || path.hasPrefix("/private/var/folders/") {
+            return false
+        }
+        return path.hasPrefix("/Applications/") || path.hasPrefix(FileManager.default.homeDirectoryForCurrentUser.path + "/Applications/")
+    }
+
     static func sync(_ enabled: Bool) {
         do {
+            if enabled, isEnabled(), !bundleIsInStableLocation {
+                NSLog("Pusu: login item kept; app is running from a temporary location")
+                return
+            }
             if enabled {
                 // Rewrite every launch so the path follows the installed bundle
                 // (a development build later moved to /Applications).

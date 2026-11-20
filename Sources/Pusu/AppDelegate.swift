@@ -135,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self else { return }
             if let command = self.pendingCommand {
-                self.handle(command: command)
+                self.handle(command: command, external: true)
                 self.pendingCommand = nil
             } else if !UserDefaults.standard.bool(forKey: "pusu.didShowIntro") {
                 UserDefaults.standard.set(true, forKey: "pusu.didShowIntro")
@@ -331,7 +331,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
-                try HelperInstaller.install(helperBinary: helperURL)
+                try HelperInstaller.install(helperBinary: helperURL, expectedSHA256: AppBundle.helperSHA256)
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .pusuHelperChanged, object: nil)
                     self?.notify(
@@ -632,12 +632,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleDistributed(_ note: Notification) {
         guard let raw = note.userInfo?["command"] as? String else { return }
         let minutes = note.userInfo?["minutes"] as? Int
-        if let command = PusuCommand(wireName: raw, minutes: minutes) {
-            handle(command: command)
-        }
+        guard let command = PusuCommand(wireName: raw, minutes: minutes),
+              CommandParser.isAllowedFromDistributedNotification(command)
+        else { return }
+        handle(command: command, external: true)
     }
 
-    private func handle(command: PusuCommand) {
+    /// - Parameter external: Komut başka bir süreçten (CLI/dağıtık bildirim) geldi. Bu durumda
+    ///   yönetici parolası penceresi asla açılmaz; yoksa kötü niyetli bir süreç Pusu adına
+    ///   inandırıcı bir parola isteği tetikleyebilir.
+    private func handle(command: PusuCommand, external: Bool = false) {
         switch command {
         case .toggle:
             session.toggle()
@@ -659,7 +663,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             copyDiagnostics()
         case .lid(let on):
             let target = on ?? !session.lidMode
-            if target != session.lidMode { setLid(target) }
+            guard target != session.lidMode else { return }
+            if external, !session.lid.helperAvailable {
+                notify(
+                    L("Kapak modu", "Lid mode"),
+                    L(
+                        "Komut satırından kapak modu için yönetici yardımcısı gerekir (Ayarlar › Sistem). Ya da menüden açın.",
+                        "Lid mode from the command line needs the privileged helper (Settings › System), or use the menu."
+                    )
+                )
+                return
+            }
+            setLid(target)
         }
     }
 

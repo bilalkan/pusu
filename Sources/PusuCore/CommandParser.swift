@@ -43,7 +43,7 @@ public enum PusuCommand: Equatable {
     public init?(wireName: String, minutes: Int?) {
         switch wireName {
         case "toggle": self = .toggle
-        case "on": self = .on(minutes: minutes.flatMap { $0 > 0 ? $0 : nil })
+        case "on": self = .on(minutes: minutes.flatMap { (1...CommandParser.maxMinutes).contains($0) ? $0 : nil })
         case "off": self = .off
         case "blackout": self = .blackout
         case "lock": self = .lock
@@ -102,20 +102,34 @@ public enum CommandParser {
         return nil
     }
 
+    /// URL ile başlatılan oturumların üst sınırı (dakika). Web sayfaları da `pusu://`
+    /// açabildiği için uzun oturumlar menüden veya komut satırından başlatılmalıdır.
+    public static let maxURLMinutes = 8 * 60
+
+    /// URL şemasının izin verdiği komutlar. Ekranı kilitleyen/karartan, kapak modunu açan
+    /// veya panoya yazan komutlar bilerek dışarıda bırakılır.
+    public static let urlAllowedCommands: Set<String> = ["on", "off", "toggle", "wake", "settings"]
+
     /// `pusu://on?minutes=60` gibi URL'leri çözer.
     public static func parse(url: URL) -> PusuCommand? {
         guard url.scheme?.lowercased() == "pusu",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         else { return nil }
         let host = (components.host ?? "").lowercased()
-        // Tanılama panoya yazar; kapak modu sistem uykusunu kapatır. İkisinin de
-        // web sayfalarından tetiklenmesine gerek yok.
-        guard host != "diagnostics", !host.hasPrefix("lid") else { return nil }
-        let minutes = components.queryItems?
+        guard urlAllowedCommands.contains(host) else { return nil }
+        var minutes = components.queryItems?
             .first(where: { $0.name == "minutes" })?
             .value
             .flatMap(parseDuration)
+        if let value = minutes, value > maxURLMinutes { minutes = maxURLMinutes }
         return PusuCommand(wireName: host, minutes: minutes)
+    }
+
+    /// Aynı oturumdaki başka süreçlerin dağıtık bildirimle gönderebileceği komutlar
+    /// (`pusu` komut satırı aracı bu yolu kullanır). Tanılama panoya yazdığı için yoktur.
+    public static func isAllowedFromDistributedNotification(_ command: PusuCommand) -> Bool {
+        if case .diagnostics = command { return false }
+        return true
     }
 
     /// Bir yıldan uzun süreler reddedilir (taşma ve yazım hatalarına karşı).

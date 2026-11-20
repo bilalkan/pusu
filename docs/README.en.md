@@ -1,9 +1,9 @@
 <p align="right">
-  <a href="README.md"><img alt="Türkçe oku" src="https://img.shields.io/badge/T%C3%BCrk%C3%A7e-oku%20%E2%86%92-F5A524?style=for-the-badge&labelColor=1f2937"></a>
+  <a href="../README.md"><img alt="Türkçe oku" src="https://img.shields.io/badge/T%C3%BCrk%C3%A7e-oku%20%E2%86%92-F5A524?style=for-the-badge&labelColor=1f2937"></a>
 </p>
 
 <p align="center">
-  <img src="docs/banner.png" alt="Pusu: keeps your Mac awake" width="100%">
+  <img src="banner.png" alt="Pusu: keeps your Mac awake" width="100%">
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
   <img alt="macOS 13 or later" src="https://img.shields.io/badge/macOS-13%2B-1f2937?style=flat-square&logo=apple&logoColor=white">
   <img alt="Universal" src="https://img.shields.io/badge/Apple%20silicon%20%2B%20Intel-universal-1f2937?style=flat-square">
   <a href="https://github.com/bilalkan/pusu/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/bilalkan/pusu/ci.yml?style=flat-square&label=tests"></a>
-  <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-1f2937?style=flat-square"></a>
+  <a href="../LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-1f2937?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
   &nbsp;·&nbsp;
   <a href="#install"><b>Homebrew</b></a>
   &nbsp;·&nbsp;
-  <a href="README.md"><b>Türkçe</b></a>
+  <a href="../README.md"><b>Türkçe</b></a>
 </p>
 
 <br>
@@ -28,7 +28,7 @@
 
 <p align="center">
   <a href="https://github.com/bilalkan/pusu/releases/download/v1.0.0/pusu-intro-en.mp4">
-    <img alt="Pusu intro preview" src="docs/promo/preview-en.gif" width="80%">
+    <img alt="Pusu intro preview" src="promo/preview-en.gif" width="80%">
   </a>
   <br>
   <sub>▶ <a href="https://github.com/bilalkan/pusu/releases/download/v1.0.0/pusu-intro-en.mp4">Watch the 60-second intro</a> · <a href="https://github.com/bilalkan/pusu/releases/download/v1.0.0/pusu-intro-tr.mp4">Türkçe</a></sub>
@@ -36,12 +36,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/session-en-dark.png">
-    <img alt="Session tab" src="docs/screenshots/session-en-light.png" width="49%">
+    <source media="(prefers-color-scheme: dark)" srcset="screenshots/session-en-dark.png">
+    <img alt="Session tab" src="screenshots/session-en-light.png" width="49%">
   </picture>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/history-en-dark.png">
-    <img alt="History tab" src="docs/screenshots/history-en-light.png" width="49%">
+    <source media="(prefers-color-scheme: dark)" srcset="screenshots/history-en-dark.png">
+    <img alt="History tab" src="screenshots/history-en-light.png" width="49%">
   </picture>
 </p>
 
@@ -181,7 +181,7 @@ pusu version             Print the version
 
 If Pusu isn't running, `pusu on` starts it in the background.
 
-URLs: `pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pusu://vnc`, `pusu://blackout`, `pusu://lock`, `pusu://wake`, `pusu://settings`. Lid mode and diagnostics are deliberately not reachable from URLs.
+URLs: `pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pusu://wake`, `pusu://settings`. Since any web page can open a `pusu://` link, URLs are limited to these harmless commands and to sessions of at most 8 hours; locking the screen, turning the display off and lid mode stay in the menu and the CLI.
 
 </details>
 
@@ -217,8 +217,8 @@ Without Homebrew, run `scripts/uninstall.sh` from a clone of this repository. It
 
 ```bash
 git clone https://github.com/bilalkan/pusu.git && cd pusu
-make test        # 200+ checks, including the session state machine with fake hardware
-make install     # build, copy to /Applications and link the `pusu` command
+swift run PusuTests     # 250+ checks, including the session state machine with fake hardware
+scripts/install.sh      # build, copy to /Applications and link the `pusu` command
 ```
 
 You only need the Xcode Command Line Tools (Swift 5.9+).
@@ -235,7 +235,7 @@ You only need the Xcode Command Line Tools (Swift 5.9+).
 
 UI text is written in place as `L("Türkçe", "English")`, so a string can't ship untranslated.
 
-- `make package` builds a universal `.zip` and `.dmg` in `dist/`. With an Apple Developer ID, set `PUSU_SIGN_IDENTITY` and `PUSU_NOTARY_PROFILE` to sign and notarize.
+- `scripts/package.sh` builds a universal `.zip` and `.dmg` in `dist/`. With an Apple Developer ID, set `PUSU_SIGN_IDENTITY` and `PUSU_NOTARY_PROFILE` to sign and notarize.
 - `scripts/cask.sh` prints the Homebrew cask for the current release.
 - `swift run Pusu --snapshot-ui build/snapshots` (debug builds) renders every Settings tab in both languages and themes, without screen-recording permission.
 
@@ -243,4 +243,4 @@ UI text is written in place as `L("Türkçe", "English")`, so a string can't shi
 
 ## License
 
-[GPL-3.0](LICENSE). Use it, study it, change it, share it. If you distribute something built on Pusu, it has to stay open under the GPL too.
+[GPL-3.0](../LICENSE). Use it, study it, change it, share it. If you distribute something built on Pusu, it has to stay open under the GPL too.

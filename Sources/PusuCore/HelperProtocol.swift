@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 public enum HelperCommand: String, Codable {
     case ping
@@ -66,7 +67,7 @@ public enum HelperProtocol {
     public static let logPath = "/var/log/local.kan.pusu.helper.log"
     /// Uygulamayla birlikte gelen yardımcının protokol sürümü. Yardımcı davranışı
     /// değiştiğinde artırılır; kurulu yardımcı farklıysa arayüz güncelleme önerir.
-    public static let version = "1.2"
+    public static let version = "1.3"
 
     /// İstemcinin bağlandığı soket. `PUSU_HELPER_SOCKET` yalnızca root olmayan
     /// süreçlerde (geliştirme/test) dikkate alınır; root yardımcı her zaman sabit yolu kullanır.
@@ -111,7 +112,12 @@ public enum HelperClient {
         guard fd >= 0 else { return nil }
         defer { close(fd) }
 
-        var tv = timeval(tv_sec: Int(timeout), tv_usec: 0)
+        // SO_RCVTIMEO'da {0,0} "sonsuz bekle" demektir; kesirli süreleri doğru böl, en az 100 ms.
+        let bounded = max(0.1, timeout)
+        var tv = timeval(
+            tv_sec: Int(bounded.rounded(.down)),
+            tv_usec: Int32(((bounded - bounded.rounded(.down)) * 1_000_000).rounded())
+        )
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
 
@@ -213,9 +219,26 @@ public enum HelperInstaller {
         }
     }
 
-    public static func install(helperBinary: URL) throws {
+    /// Yardımcının SHA-256 özeti (küçük harf onaltılık).
+    public static func sha256(of url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Yardımcıyı kurar veya günceller.
+    ///
+    /// - Parameter expectedSHA256: Derleme sırasında `Info.plist`'e (`PusuHelperSHA256`) yazılan özet.
+    ///   Root betiği yardımcıyı önce yalnızca root'un erişebildiği bir klasöre kopyalar, özeti
+    ///   doğrular ve ancak sonra kurar; böylece parola penceresi açıkken paketteki dosyanın
+    ///   değiştirilmesi işe yaramaz. Plist de diskte değil, betiğin içinde üretilir.
+    public static func install(helperBinary: URL, expectedSHA256: String?) throws {
         guard FileManager.default.isExecutableFile(atPath: helperBinary.path) else {
             throw HelperError.installFailed(L("pusu-helper çalıştırılabilir dosyası bulunamadı.", "The pusu-helper executable was not found."))
+        }
+        guard let expected = (expectedSHA256 ?? sha256(of: helperBinary))?.lowercased(),
+              expected.count == 64, expected.allSatisfy({ $0.isHexDigit })
+        else {
+            throw HelperError.installFailed(L("Yardımcının özeti okunamadı.", "Could not read the helper checksum."))
         }
 
         let plist: [String: Any] = [
@@ -228,25 +251,27 @@ public enum HelperInstaller {
             "StandardOutPath": HelperProtocol.logPath,
             "StandardErrorPath": HelperProtocol.logPath,
         ]
-        let plistData = try PropertyListSerialization.data(
-            fromPropertyList: plist,
-            format: .xml,
-            options: 0
-        )
-
-        let tempDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pusu-helper-install-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDirectory) }
-
-        let plistURL = tempDirectory.appendingPathComponent("local.kan.pusu.helper.plist")
-        try plistData.write(to: plistURL)
+        let plistData = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        guard let plistXML = String(data: plistData, encoding: .utf8), !plistXML.contains("PUSU_PLIST_EOF") else {
+            throw HelperError.installFailed("plist")
+        }
 
         let script = """
+        STAGE=$(/usr/bin/mktemp -d /private/var/tmp/pusu-helper.XXXXXX)
+        trap '/bin/rm -rf "$STAGE"' EXIT
+        /bin/cp \(Shell.shellQuote(helperBinary.path)) "$STAGE/helper"
+        ACTUAL=$(/usr/bin/shasum -a 256 "$STAGE/helper" | /usr/bin/awk '{print $1}')
+        if [ "$ACTUAL" != "\(expected)" ]; then
+            echo "pusu-helper checksum mismatch" >&2
+            exit 3
+        fi
+        /bin/cat > "$STAGE/plist" <<'PUSU_PLIST_EOF'
+        \(plistXML)
+        PUSU_PLIST_EOF
         /usr/bin/install -d -o root -g wheel -m 755 /Library/PrivilegedHelperTools
-        /usr/bin/install -o root -g wheel -m 755 \(Shell.shellQuote(helperBinary.path)) \(HelperProtocol.installedBinaryPath)
-        /usr/bin/install -o root -g wheel -m 644 \(Shell.shellQuote(plistURL.path)) \(HelperProtocol.daemonPlistPath)
         /bin/launchctl bootout system/\(HelperProtocol.label) >/dev/null 2>&1 || true
+        /usr/bin/install -o root -g wheel -m 755 "$STAGE/helper" \(HelperProtocol.installedBinaryPath)
+        /usr/bin/install -o root -g wheel -m 644 "$STAGE/plist" \(HelperProtocol.daemonPlistPath)
         /bin/launchctl bootstrap system \(HelperProtocol.daemonPlistPath)
         /bin/launchctl kickstart -k system/\(HelperProtocol.label)
         """
@@ -254,6 +279,12 @@ public enum HelperInstaller {
         let result = Shell.runAsAdmin(script: script)
         guard result.succeeded else {
             if result.wasCancelled { throw HelperError.adminCancelled }
+            if result.stderr.contains("checksum mismatch") {
+                throw HelperError.installFailed(L(
+                    "Uygulama paketindeki yardımcı değiştirilmiş görünüyor (SHA-256 uyuşmuyor). Pusu'yu yeniden indirin.",
+                    "The helper inside the app bundle appears to have been modified (SHA-256 mismatch). Download Pusu again."
+                ))
+            }
             throw HelperError.installFailed(result.failureDescription)
         }
 
@@ -304,6 +335,16 @@ public final class LidController: LidControlling {
         HelperClient.status()
     }
 
+    /// Yardımcı kuruluysa ve meşgulse birkaç kez daha dener.
+    private func helperRespondsAfterRetry() -> Bool {
+        guard HelperInstaller.daemonPlistExists else { return false }
+        for _ in 0..<3 {
+            Thread.sleep(forTimeInterval: 0.4)
+            if HelperClient.ping(timeout: 2) != nil { return true }
+        }
+        return false
+    }
+
     /// Reads the global `SleepDisabled` flag. Returns nil if pmset output could not be parsed.
     public func sleepDisabled(timeout: TimeInterval) -> Bool? {
         let result = Shell.run("/usr/bin/pmset", ["-g"], timeout: timeout)
@@ -347,14 +388,21 @@ public final class LidController: LidControlling {
                 throw HelperError.commandFailed(L("pmset SleepDisabled ayarlanamadı.", "pmset could not set SleepDisabled."))
             }
         } else {
-            if helperAvailable {
-                guard let status = HelperClient.send(.lidOff), status.ok else {
+            if helperAvailable || helperRespondsAfterRetry() {
+                guard let status = HelperClient.send(.lidOff, timeout: 4), status.ok else {
                     throw HelperError.commandFailed(L("Kapak modu kapatılamadı.", "Could not turn off lid mode."))
                 }
                 return
             }
 
-            guard settings.fallbackSleepDisabledActive else { return }
+            guard settings.fallbackSleepDisabledActive else {
+                // Yardımcı kurulu ama yanıt vermiyorsa sessizce "kapandı" demeyelim:
+                // SleepDisabled hâlâ 1 olabilir.
+                if HelperInstaller.daemonPlistExists, sleepDisabled(timeout: 5) == true {
+                    throw HelperError.helperUnavailable
+                }
+                return
+            }
             guard allowPrompt else { throw HelperError.adminCancelled }
             let original = settings.fallbackSleepDisabledOriginal ?? false
             let result = Shell.runAsAdmin(command: "/usr/bin/pmset -a disablesleep \(original ? 1 : 0)")

@@ -62,7 +62,7 @@ public struct PusuDuration: Codable, Hashable, Identifiable {
     }
 
     public static func humanLabel(seconds: TimeInterval) -> String {
-        let total = Int(seconds.rounded())
+        let total = safeInt(seconds.rounded())
         if total <= 0 { return L("Süresiz", "Indefinitely") }
         let hours = total / 3600
         let minutes = (total % 3600) / 60
@@ -73,7 +73,7 @@ public struct PusuDuration: Codable, Hashable, Identifiable {
     }
 
     public static func compactLabel(seconds: TimeInterval) -> String {
-        let total = Int(seconds.rounded())
+        let total = safeInt(seconds.rounded())
         let (d, h, m, sec) = Localization.isTurkish ? ("g", "s", "d", "sn") : ("d", "h", "m", "s")
         if total >= 86400 {
             let days = total / 86400
@@ -93,10 +93,17 @@ public struct PusuDuration: Codable, Hashable, Identifiable {
     }
 }
 
+/// `Int(Double)` NaN, sonsuz veya çok büyük değerlerde çöker; görüntü için güvenli sınırlı dönüşüm.
+@inline(__always)
+func safeInt(_ value: Double) -> Int {
+    guard value.isFinite else { return 0 }
+    return Int(max(-1e15, min(1e15, value)))
+}
+
 public enum TimeText {
     /// Monospaced menu-bar countdown: 1:23:45, 23:45 or 2g 03:12.
     public static func countdown(_ remaining: TimeInterval) -> String {
-        let total = max(0, Int(remaining.rounded(.up)))
+        let total = max(0, safeInt(remaining.rounded(.up)))
         let days = total / 86400
         let hours = (total % 86400) / 3600
         let minutes = (total % 3600) / 60

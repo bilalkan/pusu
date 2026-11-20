@@ -180,7 +180,7 @@ enum CLI {
             exit(4)
         }
         do {
-            try HelperInstaller.install(helperBinary: url)
+            try HelperInstaller.install(helperBinary: url, expectedSHA256: AppBundle.helperSHA256)
             print(L("Yönetici yardımcısı kuruldu.", "Privileged helper installed."))
         } catch {
             fputs(L("Kurulum başarısız: \(error.localizedDescription)\n", "Install failed: \(error.localizedDescription)\n"), stderr)
@@ -266,6 +266,12 @@ enum AppBundle {
               bundle.pathExtension == "app"
         else { return nil }
         return bundle
+    }
+
+    /// Derleme sırasında `Info.plist`'e yazılan yardımcı özeti (`PusuHelperSHA256`).
+    static var helperSHA256: String? {
+        let bundle = url.flatMap(Bundle.init(url:)) ?? Bundle.main
+        return bundle.object(forInfoDictionaryKey: "PusuHelperSHA256") as? String
     }
 
     static var helperURL: URL? {

@@ -114,3 +114,42 @@ func runShellTimeoutChecks() {
     expect(!failing.succeeded && !failing.timedOut, "shell: normal hata")
     expect(failing.failureDescription.contains("1"), "shell: boş çıktıda çıkış kodu")
 }
+
+/// Güvenlik denetimi bulgularının regresyon testleri.
+func runSecurityPolicyChecks() {
+    func url(_ string: String) -> PusuCommand? {
+        URL(string: string).flatMap(CommandParser.parse(url:))
+    }
+    // URL yalnızca zararsız komutlara izin verir
+    expectNil(url("pusu://vnc"), "url: vnc kapalı")
+    expectNil(url("pusu://lock"), "url: lock kapalı")
+    expectNil(url("pusu://blackout"), "url: blackout kapalı")
+    expectNil(url("pusu://lid"), "url: lid kapalı")
+    expectNil(url("pusu://diagnostics"), "url: diagnostics kapalı")
+    expectEqual(url("pusu://wake"), .wake, "url: wake açık")
+    expectEqual(url("pusu://settings"), .settings, "url: settings açık")
+    // URL süresi 8 saatle sınırlı
+    expectEqual(url("pusu://on?minutes=525600"), .on(minutes: CommandParser.maxURLMinutes), "url: uzun süre 8 saate iner")
+    expectEqual(url("pusu://on?minutes=90"), .on(minutes: 90), "url: normal süre aynen")
+
+    // Dağıtık bildirim: süre sınırı ve tanılama yasağı
+    expectEqual(PusuCommand(wireName: "on", minutes: 200_000_000_000_000_000), .on(minutes: nil), "wire: devasa dakika reddedilir")
+    expectEqual(PusuCommand(wireName: "on", minutes: CommandParser.maxMinutes), .on(minutes: CommandParser.maxMinutes), "wire: üst sınır kabul")
+    expect(!CommandParser.isAllowedFromDistributedNotification(.diagnostics), "wire: tanılama reddedilir")
+    expect(CommandParser.isAllowedFromDistributedNotification(.lid(on: true)), "wire: lid (yalnız yardımcı varsa) izinli")
+
+    // Görüntüleme kodu aşırı değerlerde çökmez
+    expect(!PusuDuration(seconds: 1e300).label.isEmpty, "süre: 1e300 etiketi çökmez")
+    expect(!PusuDuration(seconds: 1e300).shortLabel.isEmpty, "süre: 1e300 kısa etiket çökmez")
+    expect(!TimeText.countdown(.infinity).isEmpty, "geri sayım: sonsuz çökmez")
+    expect(!TimeText.countdown(.nan).isEmpty, "geri sayım: NaN çökmez")
+
+    // Yardımcı özeti
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("pusu-sha-\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let file = directory.appendingPathComponent("helper")
+    try? Data("pusu".utf8).write(to: file)
+    expectEqual(HelperInstaller.sha256(of: file), "d4822ddc3221d33dc53dab8616f2bd4d6039786ce432123a99a7571c50162b6c", "sha: bilinen özet")
+    expectNil(HelperInstaller.sha256(of: directory.appendingPathComponent("yok")), "sha: olmayan dosya")
+    try? FileManager.default.removeItem(at: directory)
+}

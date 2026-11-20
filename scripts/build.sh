@@ -69,6 +69,9 @@ else
     SIGN_ARGS=(--force --sign - --timestamp=none)
 fi
 codesign "${SIGN_ARGS[@]}" --identifier local.kan.pusu.helper "$APP/Contents/Resources/pusu-helper"
+# İmzalı yardımcının özeti Info.plist'e yazılır; kurulumda root bu özeti doğrular.
+HELPER_SHA="$(shasum -a 256 "$APP/Contents/Resources/pusu-helper" | awk '{print $1}')"
+plutil -replace PusuHelperSHA256 -string "$HELPER_SHA" "$APP/Contents/Info.plist"
 codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --strict --deep "$APP"
 

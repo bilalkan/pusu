@@ -31,7 +31,19 @@ cask "pusu" do
     run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "Pusu.app"], chdir: "."
   end
 
-  # Yardımcı durdurulurken SleepDisabled'ı kendi eski değerine döndürür.
+  # Yardımcı durdurulurken SleepDisabled'ı kendi eski değerine döndürür. Yardımcı zaten
+  # durmuşsa önce kayıtlı eski değer (yalnızca 0/1) buradan geri yüklenir.
+  uninstall_preflight_steps do
+    run "/bin/sh",
+        args:         [
+          "-c",
+          "S=/var/db/local.kan.pusu.helper.state; [ -f \$S ] || exit 0; V=\$(/bin/cat \$S); " \\
+          "case \$V in 0|1) /usr/bin/pmset -a disablesleep \$V;; esac",
+        ],
+        sudo:         true,
+        must_succeed: false
+  end
+
   uninstall launchctl: "local.kan.pusu.helper",
             quit:      "local.kan.pusu",
             delete:    [

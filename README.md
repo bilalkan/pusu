@@ -1,5 +1,5 @@
 <p align="right">
-  <a href="README.en.md"><img alt="Read in English" src="https://img.shields.io/badge/Read%20in-English%20%E2%86%92-F5A524?style=for-the-badge&labelColor=1f2937"></a>
+  <a href="docs/README.en.md"><img alt="Read in English" src="https://img.shields.io/badge/Read%20in-English%20%E2%86%92-F5A524?style=for-the-badge&labelColor=1f2937"></a>
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
   &nbsp;·&nbsp;
   <a href="#kurulum"><b>Homebrew</b></a>
   &nbsp;·&nbsp;
-  <a href="README.en.md"><b>English</b></a>
+  <a href="docs/README.en.md"><b>English</b></a>
 </p>
 
 <br>
@@ -181,7 +181,7 @@ pusu version             Sürüm
 
 Süreyi Türkçe kısaltmalarla da yazabilirsin: `2s` (saat), `45d` (dakika), `1s30d`. Pusu çalışmıyorsa `pusu on` onu arka planda başlatır.
 
-URL'ler: `pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pusu://vnc`, `pusu://blackout`, `pusu://lock`, `pusu://wake`, `pusu://settings`. Kapak modu ve tanılama bilerek URL'den erişilemez.
+URL'ler: `pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pusu://wake`, `pusu://settings`. Her web sayfası `pusu://` bağlantısı açabildiği için URL'ler bu zararsız komutlarla ve en fazla 8 saatlik oturumlarla sınırlı; ekranı kilitleme, karartma ve kapak modu menüde ve komut satırında kalır.
 
 </details>
 
@@ -217,8 +217,8 @@ Homebrew kullanmadıysan bu deponun bir kopyasında `scripts/uninstall.sh` çal�
 
 ```bash
 git clone https://github.com/bilalkan/pusu.git && cd pusu
-make test        # 200'den fazla kontrol; oturum durum makinesi sahte donanımla test edilir
-make install     # derle, /Applications'a kopyala ve `pusu` komutunu bağla
+swift run PusuTests     # 250'den fazla kontrol; oturum durum makinesi sahte donanımla test edilir
+scripts/install.sh      # derle, /Applications'a kopyala ve `pusu` komutunu bağla
 ```
 
 Yalnızca Xcode Command Line Tools (Swift 5.9+) yeterli.
@@ -235,7 +235,7 @@ Yalnızca Xcode Command Line Tools (Swift 5.9+) yeterli.
 
 Arayüz metinleri kodda `L("Türkçe", "English")` biçiminde yan yana yazılır; hiçbir metin çevrilmeden yayına çıkamaz.
 
-- `make package`, `dist/` içinde universal `.zip` ve `.dmg` üretir. Apple Developer ID'n varsa imzalama ve notarization için `PUSU_SIGN_IDENTITY` ve `PUSU_NOTARY_PROFILE` değişkenlerini ayarla.
+- `scripts/package.sh`, `dist/` içinde universal `.zip` ve `.dmg` üretir. Apple Developer ID'n varsa imzalama ve notarization için `PUSU_SIGN_IDENTITY` ve `PUSU_NOTARY_PROFILE` değişkenlerini ayarla.
 - `scripts/cask.sh`, mevcut sürüm için Homebrew cask dosyasını yazdırır.
 - `swift run Pusu --snapshot-ui build/snapshots` (debug derlemesi), Ayarlar'ın tüm sekmelerini iki dilde ve iki temada, ekran kaydı izni olmadan üretir.
 
