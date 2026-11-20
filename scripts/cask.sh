@@ -10,6 +10,7 @@ ZIP="dist/Pusu-$VERSION.zip"
 [ -f "$ZIP" ] || { echo "$ZIP yok; önce scripts/package.sh çalıştırın." >&2; exit 1; }
 SHA="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
 
+# Not: heredoc tırnaksız (sürüm ve özet yerleşsin diye); $ ve ` karakterlerini kaçırın.
 cat <<CASK
 cask "pusu" do
   version "$VERSION"
@@ -64,7 +65,7 @@ cask "pusu" do
     Pusu is not notarized by Apple. The cask removes the quarantine flag so it opens normally.
     Lid mode needs administrator rights; install the optional helper from Settings › System.
     If you use lid mode without the helper, turn it off in Pusu before uninstalling;
-    otherwise run `sudo pmset -a disablesleep 0` afterwards.
+    otherwise run \`sudo pmset -a disablesleep 0\` afterwards.
   EOS
 end
 CASK
