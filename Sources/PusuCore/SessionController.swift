@@ -674,6 +674,7 @@ public enum Diagnostics {
         lines.append("  lid battery guard: \(percent(settings.lidBatteryFloorEnabled, settings.lidBatteryFloorPercent))")
         lines.append("  hotkey: \(settings.hotkeyPreset.rawValue)")
         lines.append("  launch at login: \(settings.launchAtLogin)")
+        lines.append("  update check: \(settings.updateCheckEnabled ? "daily" : (settings.updateCheckAsked ? "manual" : "not asked yet"))")
         lines.append("")
 
         if let battery = session.battery {

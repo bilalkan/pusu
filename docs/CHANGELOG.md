@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4 — 2026-11-20
+
+- Optional update check. On first launch Pusu asks whether to check automatically once a day or only when you ask; "Check for Updates…" in the menu works either way. A new version shows up in the menu with one notification, with the `brew upgrade` command for Homebrew installs. The check only reads GitHub's public latest-release address — no cookies, identifiers or usage data.
+
 ## 1.0.3 — 2026-11-20
 
 - Click the menu bar icon to turn Pusu on or off; right-click (or Control-click) opens the menu. You can switch back to "click opens the menu" in Settings. The icon's tooltip and the welcome message explain it, and VoiceOver offers a "Show menu" action.

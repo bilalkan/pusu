@@ -153,3 +153,62 @@ func runSecurityPolicyChecks() {
     expectNil(HelperInstaller.sha256(of: directory.appendingPathComponent("yok")), "sha: olmayan dosya")
     try? FileManager.default.removeItem(at: directory)
 }
+
+/// İsteğe bağlı güncelleme kontrolü: sürüm karşılaştırma, GitHub yanıtı, zamanlama.
+func runUpdateCheckerChecks() {
+    func v(_ s: String) -> AppVersion? { AppVersion(s) }
+    expect(v("1.0.3")! < v("1.0.4")!, "sürüm: yama")
+    expect(v("1.0.9")! < v("1.0.10")!, "sürüm: sayısal karşılaştırma")
+    expect(v("1.9")! < v("1.10.0")!, "sürüm: farklı uzunluk")
+    expect(v("v1.2.0")! == v("1.2")!, "sürüm: v öneki ve sondaki sıfır")
+    expect(!(v("2.0.0")! < v("1.9.9")!), "sürüm: büyük sürüm")
+    expectNil(v("1.0.4-beta"), "sürüm: ön sürüm eki reddedilir")
+    expectNil(v("1..2"), "sürüm: boş bileşen")
+    expectNil(v("abc"), "sürüm: metin")
+    expectNil(v("1.2.3.4.5"), "sürüm: çok bileşen")
+
+    func release(_ json: String) -> AvailableUpdate? {
+        UpdateChecker.parseLatestRelease(Data(json.utf8))
+    }
+    let ok = release(#"{"tag_name":"v1.0.4","html_url":"https://github.com/bilalkan/pusu/releases/tag/v1.0.4","draft":false,"prerelease":false}"#)
+    expectEqual(ok?.version, "1.0.4", "github: sürüm")
+    expectEqual(ok?.releaseURL.absoluteString, "https://github.com/bilalkan/pusu/releases/tag/v1.0.4", "github: sürüm sayfası")
+    expectNil(release(#"{"tag_name":"v1.0.5","draft":true}"#), "github: taslak yok sayılır")
+    expectNil(release(#"{"tag_name":"v1.0.5","prerelease":true}"#), "github: ön sürüm yok sayılır")
+    expectNil(release(#"{"tag_name":"latest"}"#), "github: bozuk etiket")
+    expectNil(release("not json"), "github: bozuk yanıt")
+    let evil = release(#"{"tag_name":"v9.9.9","html_url":"https://evil.example/pusu"}"#)
+    expectEqual(evil?.releaseURL, UpdateChecker.releasesPage, "github: yabancı adres yerine sabit sürüm sayfası")
+    let sneaky = release(#"{"tag_name":"v9.9.9","html_url":"https://github.com/bilalkan/pusu/releases/../../other/repo"}"#)
+    expectEqual(sneaky?.releaseURL, UpdateChecker.releasesPage, "github: '..' ile başka repoya kaçış engellenir")
+
+    expectEqual(UpdateChecker.newer(ok, than: "1.0.3"), ok, "newer: yeni sürüm")
+    expectNil(UpdateChecker.newer(ok, than: "1.0.4"), "newer: aynı sürüm")
+    expectNil(UpdateChecker.newer(ok, than: "1.1.0"), "newer: daha eski uzak sürüm")
+    expectNil(UpdateChecker.newer(ok, than: "dev"), "newer: geliştirme derlemesi")
+
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    expect(!UpdateChecker.isDue(enabled: false, lastCheck: nil, now: now), "zaman: kapalıyken asla")
+    expect(!UpdateChecker.isDue(enabled: nil, lastCheck: nil, now: now), "zaman: sorulmadıysa asla")
+    expect(UpdateChecker.isDue(enabled: true, lastCheck: nil, now: now), "zaman: ilk kez")
+    expect(!UpdateChecker.isDue(enabled: true, lastCheck: now.addingTimeInterval(-3600), now: now), "zaman: 1 saat önce denetlendi")
+    expect(UpdateChecker.isDue(enabled: true, lastCheck: now.addingTimeInterval(-25 * 3600), now: now), "zaman: 25 saat önce")
+    expect(UpdateChecker.isDue(enabled: true, lastCheck: now.addingTimeInterval(3600), now: now), "zaman: saat geri alınmış")
+
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pusu-cask-\(UUID().uuidString)")
+    expect(!UpdateChecker.installedWithHomebrew(caskroomPaths: [dir.path]), "homebrew: yok")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    expect(UpdateChecker.installedWithHomebrew(caskroomPaths: [dir.path]), "homebrew: var")
+    try? FileManager.default.removeItem(at: dir)
+
+    let suite = "pusu.tests"
+    removeDefaultsSuite(suite)
+    let defaults = UserDefaults(suiteName: suite)!
+    let store = SettingsStore(defaults: defaults)
+    expect(!store.updateCheckEnabled, "ayar: otomatik denetim varsayılan kapalı")
+    expect(!store.updateCheckAsked, "ayar: henüz sorulmadı")
+    store.updateCheckEnabled = true
+    let reloaded = SettingsStore(defaults: defaults)
+    expect(reloaded.updateCheckEnabled && reloaded.updateCheckAsked, "ayar: seçim ve sorulma kalıcı")
+    removeDefaultsSuite(suite)
+}

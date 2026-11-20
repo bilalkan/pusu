@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var commandObserver: NSObjectProtocol?
     private var pendingCommand: PusuCommand?
+    private lazy var updates = UpdateMonitor(settings: settings, currentVersion: CLI.version) { [weak self] title, body in
+        self?.notify(title, body)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -37,12 +40,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusController = StatusItemController(
             session: session,
             settings: settings,
+            updates: updates,
             actions: makeStatusActions()
         )
         settingsWindow = SettingsWindowController(
             settings: settings,
             session: session,
             history: session.history,
+            updates: updates,
             actions: makeSettingsActions()
         )
         aboutWindow = AboutWindowController()
@@ -145,6 +150,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 UserDefaults.standard.set(true, forKey: "pusu.didShowIntro")
                 self.showWelcome()
             }
+            // Güncelleme izni bir kez sorulur (yeni kurulumda karşılamadan hemen sonra).
+            self.updates.askForPermissionIfNeeded()
+            self.updates.start()
         }
 
         if settings.autoStartOnLaunch, pendingCommand == nil {
@@ -224,6 +232,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openSettings: { [weak self] in self?.showSettings() },
             copyDiagnostics: { [weak self] in self?.copyDiagnostics() },
             about: { [weak self] in self?.showAbout() },
+            checkForUpdates: { [weak self] in self?.updates.check(userInitiated: true) },
+            showUpdate: { [weak self] in self?.updates.presentUpdate() },
             quit: { NSApp.terminate(nil) }
         )
     }
@@ -244,7 +254,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             wake: { [weak self] in self?.session.exitRemoteMode() },
             openSharingSettings: { [weak self] in self?.openSharingSettings() },
             copyDiagnostics: { [weak self] in self?.copyDiagnostics() },
-            about: { [weak self] in self?.showAbout() }
+            about: { [weak self] in self?.showAbout() },
+            checkForUpdates: { [weak self] in self?.updates.check(userInitiated: true) },
+            showUpdate: { [weak self] in self?.updates.presentUpdate() }
         )
     }
 
@@ -533,6 +545,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showAbout()
     }
 
+    @objc private func menuCheckForUpdates() {
+        updates.check(userInitiated: true)
+    }
+
     private func installMainMenu() {
         let mainMenu = NSMenu()
 
@@ -541,6 +557,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let about = NSMenuItem(title: L("Pusu Hakkında", "About Pusu"), action: #selector(menuAbout), keyEquivalent: "")
         about.target = self
         appMenu.addItem(about)
+        let updatesItem = NSMenuItem(title: L("Güncellemeleri Denetle…", "Check for Updates…"), action: #selector(menuCheckForUpdates), keyEquivalent: "")
+        updatesItem.target = self
+        appMenu.addItem(updatesItem)
         appMenu.addItem(.separator())
         let settingsItem = NSMenuItem(title: L("Ayarlar…", "Settings…"), action: #selector(menuOpenSettings), keyEquivalent: ",")
         settingsItem.target = self

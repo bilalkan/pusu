@@ -289,6 +289,7 @@ runChecks("Localization") { runLocalizationChecks() }
 runChecks("Clock format") { runClockFormatChecks() }
 runChecks("Shell timeout") { runShellTimeoutChecks() }
 runChecks("Security policy") { runSecurityPolicyChecks() }
+runChecks("Update checker") { runUpdateCheckerChecks() }
 
 // MARK: - SessionController
 

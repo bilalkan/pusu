@@ -7,6 +7,7 @@ final class SettingsWindowController: NSWindowController {
         settings: SettingsStore,
         session: SessionController,
         history: SessionHistoryStore,
+        updates: UpdateMonitor,
         actions: SettingsActions
     ) {
         let view = SettingsView(
@@ -14,6 +15,7 @@ final class SettingsWindowController: NSWindowController {
             session: session,
             history: history,
             ui: SettingsUIModel(),
+            updates: updates,
             actions: actions
         )
         let hostingController = NSHostingController(rootView: view)

@@ -85,7 +85,7 @@
     </td>
     <td valign="top">
       <h3>🔒 Private by design</h3>
-      No network access, no analytics, no account. Native Swift, near-zero CPU.
+      No analytics, no account. Its only network request reads the latest version number from GitHub, once a day or when you ask, and only if you allow it. Native Swift, near-zero CPU.
     </td>
   </tr>
 </table>
@@ -183,6 +183,17 @@ pusu version             Print the version
 If Pusu isn't running, `pusu on` starts it in the background.
 
 URLs: `pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pusu://wake`, `pusu://settings`. Since any web page can open a `pusu://` link, URLs are limited to these harmless commands and to sessions of at most 8 hours; locking the screen, turning the display off and lid mode stay in the menu and the CLI.
+
+</details>
+
+<details>
+<summary><b>Updates</b></summary>
+
+<br>
+
+On first launch Pusu asks how to check for updates: **automatically once a day** or **only when you ask**. Either way, **Check for Updates…** in the menu checks right away, and you can change the choice in Settings › Settings › Updates.
+
+The check only reads GitHub's public "latest release" address; no cookies, identifiers or usage data are sent. When a new version is out, it shows up in the menu and you get one notification. With Homebrew, run `brew update && brew upgrade --cask pusu`; otherwise download the new `.dmg` from the releases page. You can also **Watch › Custom › Releases** on GitHub.
 
 </details>
 

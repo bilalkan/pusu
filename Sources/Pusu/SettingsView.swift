@@ -18,6 +18,8 @@ struct SettingsActions {
     var openSharingSettings: () -> Void
     var copyDiagnostics: () -> Void
     var about: () -> Void
+    var checkForUpdates: () -> Void
+    var showUpdate: () -> Void
 }
 
 enum SettingsTab: String, CaseIterable, Identifiable {
@@ -131,6 +133,7 @@ struct SettingsView: View {
     let session: SessionController
     let history: SessionHistoryStore
     @ObservedObject var ui: SettingsUIModel
+    let updates: UpdateMonitor
     let actions: SettingsActions
 
     var body: some View {
@@ -148,7 +151,7 @@ struct SettingsView: View {
                 SystemTabView(settings: settings, session: session, ui: ui, actions: actions)
                     .tabItem { Label(SettingsTab.system.title, systemImage: SettingsTab.system.symbol) }
                     .tag(SettingsTab.system)
-                PreferencesTabView(settings: settings, ui: ui, actions: actions)
+                PreferencesTabView(settings: settings, ui: ui, updates: updates, actions: actions)
                     .tabItem { Label(SettingsTab.settings.title, systemImage: SettingsTab.settings.symbol) }
                     .tag(SettingsTab.settings)
             }
@@ -696,6 +699,7 @@ private struct SystemTabView: View {
 private struct PreferencesTabView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var ui: SettingsUIModel
+    @ObservedObject var updates: UpdateMonitor
     let actions: SettingsActions
 
     var body: some View {
@@ -706,6 +710,7 @@ private struct PreferencesTabView: View {
                 notificationsCard
                 hotkeyCard
                 languageCard
+                updatesCard
                 aboutCard
                 filesCard
             }
@@ -876,6 +881,53 @@ private struct PreferencesTabView: View {
                 }
                 .labelsHidden()
                 .frame(width: 160)
+            }
+        }
+    }
+
+    private var updatesStatus: String {
+        switch updates.state {
+        case .checking:
+            return L("Denetleniyor…", "Checking…")
+        case .available(let update):
+            return L("Pusu \(update.version) yayında", "Pusu \(update.version) is available")
+        case .upToDate:
+            return L("Güncel · \(CLI.version)", "Up to date · \(CLI.version)")
+        case .failed:
+            return L("Son denetim başarısız", "The last check failed")
+        case .idle:
+            if let last = settings.lastUpdateCheck {
+                return L("Son denetim: \(TimeText.clock(last))", "Last checked: \(TimeText.clock(last))")
+            }
+            return L("Henüz denetlenmedi", "Not checked yet")
+        }
+    }
+
+    private var updatesCard: some View {
+        SettingsCard(
+            title: L("Güncellemeler", "Updates"),
+            subtitle: L(
+                "Pusu yalnızca GitHub'dan en son sürüm numarasını okur; kimlik ya da kullanım verisi gönderilmez.",
+                "Pusu only reads the latest version number from GitHub; no identifying or usage data is sent."
+            )
+        ) {
+            SettingRow(
+                title: L("Günde bir kez otomatik denetle", "Check automatically once a day"),
+                subtitle: L("Kapalıysa Pusu yalnızca siz \"Şimdi Denetle\"ye bastığınızda bakar.", "When off, Pusu only checks when you click \"Check Now\".")
+            ) {
+                SettingsToggle(title: L("Günde bir kez otomatik denetle", "Check automatically once a day"), isOn: $settings.updateCheckEnabled)
+            }
+            Divider()
+            HStack(spacing: 10) {
+                Text(updatesStatus)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if updates.available != nil {
+                    Button(L("Ayrıntılar…", "Details…")) { actions.showUpdate() }
+                }
+                Button(L("Şimdi Denetle", "Check Now")) { actions.checkForUpdates() }
+                    .disabled(updates.state == .checking)
             }
         }
     }

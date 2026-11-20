@@ -57,6 +57,10 @@ public final class SettingsStore: ObservableObject {
         case showCountdown = "pusu.showCountdown"
         case remoteLockOnBlackout = "pusu.remoteLockOnBlackout"
         case clickTogglesSession = "pusu.clickTogglesSession"
+        case updateCheckEnabled = "pusu.updateCheckEnabled"
+        case updateCheckAsked = "pusu.updateCheckAsked"
+        case lastUpdateCheck = "pusu.lastUpdateCheck"
+        case notifiedUpdateVersion = "pusu.notifiedUpdateVersion"
         case hotkeyPreset = "pusu.hotkeyPreset"
         case fallbackSleepDisabledOriginal = "pusu.fallbackSleepDisabledOriginal"
         case fallbackSleepDisabledActive = "pusu.fallbackSleepDisabledActive"
@@ -109,6 +113,31 @@ public final class SettingsStore: ObservableObject {
     @Published public var clickTogglesSession: Bool {
         didSet { save(clickTogglesSession, .clickTogglesSession); onChange?() }
     }
+    /// Günde bir kez GitHub'dan yeni sürüm kontrolü. Varsayılan kapalı; kullanıcıya bir kez sorulur.
+    @Published public var updateCheckEnabled: Bool {
+        didSet {
+            save(updateCheckEnabled, .updateCheckEnabled)
+            updateCheckAsked = true
+            onChange?()
+        }
+    }
+
+    /// Güncelleme kontrolü için izin soruldu mu?
+    public var updateCheckAsked: Bool {
+        get { defaults.bool(forKey: Key.updateCheckAsked.rawValue) }
+        set { defaults.set(newValue, forKey: Key.updateCheckAsked.rawValue) }
+    }
+
+    public var lastUpdateCheck: Date? {
+        get { defaults.object(forKey: Key.lastUpdateCheck.rawValue) as? Date }
+        set { defaults.set(newValue, forKey: Key.lastUpdateCheck.rawValue) }
+    }
+
+    /// Bildirimi gösterilmiş son sürüm (aynı sürüm için tekrar bildirim gönderilmez).
+    public var notifiedUpdateVersion: String? {
+        get { defaults.string(forKey: Key.notifiedUpdateVersion.rawValue) }
+        set { defaults.set(newValue, forKey: Key.notifiedUpdateVersion.rawValue) }
+    }
     @Published public var hotkeyPreset: HotKeyPreset {
         didSet { save(hotkeyPreset.rawValue, .hotkeyPreset); onChange?() }
     }
@@ -143,6 +172,7 @@ public final class SettingsStore: ObservableObject {
         self.showCountdown = defaults.object(forKey: Key.showCountdown.rawValue) as? Bool ?? true
         self.remoteLockOnBlackout = defaults.object(forKey: Key.remoteLockOnBlackout.rawValue) as? Bool ?? true
         self.clickTogglesSession = defaults.object(forKey: Key.clickTogglesSession.rawValue) as? Bool ?? true
+        self.updateCheckEnabled = defaults.object(forKey: Key.updateCheckEnabled.rawValue) as? Bool ?? false
 
         let rawHotkey = defaults.string(forKey: Key.hotkeyPreset.rawValue)
         self.hotkeyPreset = rawHotkey.flatMap(HotKeyPreset.init(rawValue:)) ?? .ctrlOptCmdA

@@ -18,6 +18,8 @@ struct StatusActions {
     var openSettings: () -> Void
     var copyDiagnostics: () -> Void
     var about: () -> Void
+    var checkForUpdates: () -> Void
+    var showUpdate: () -> Void
     var quit: () -> Void
 }
 
@@ -42,9 +44,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var cacheRefreshPending = false
     private var cancellables = Set<AnyCancellable>()
 
-    init(session: SessionController, settings: SettingsStore, actions: StatusActions) {
+    private let updates: UpdateMonitor
+
+    init(session: SessionController, settings: SettingsStore, updates: UpdateMonitor, actions: StatusActions) {
         self.session = session
         self.settings = settings
+        self.updates = updates
         self.actions = actions
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.statusItem = statusItem
@@ -195,6 +200,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         refreshMenuCache()
         addHeader(to: menu)
 
+        if let update = updates.available {
+            menu.addItem(item(
+                L("Yeni sürüm: Pusu \(update.version)…", "New version: Pusu \(update.version)…"),
+                action: #selector(showUpdate),
+                image: "arrow.down.circle"
+            ))
+            menu.addItem(.separator())
+        }
+
         if session.isOn, let remaining = session.remaining {
             let timerItem = disabledItem(L("Kalan: \(TimeText.countdown(remaining))", "Remaining: \(TimeText.countdown(remaining))"))
             timerItem.image = symbol("timer")
@@ -237,6 +251,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         let settingsItem = item(L("Ayarlar…", "Settings…"), action: #selector(openSettings), key: ",", image: "slider.horizontal.3")
         menu.addItem(settingsItem)
+        menu.addItem(item(L("Güncellemeleri Denetle…", "Check for Updates…"), action: #selector(checkForUpdates), image: "arrow.triangle.2.circlepath"))
         menu.addItem(item(L("Pusu Hakkında", "About Pusu"), action: #selector(about), image: "info.circle"))
         menu.addItem(item(L("Pusu'dan Çık", "Quit Pusu"), action: #selector(quit), key: "q", image: "rectangle.portrait.and.arrow.right"))
     }
@@ -519,6 +534,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func copyDiagnostics() { actions.copyDiagnostics() }
 
     @objc private func about() { actions.about() }
+
+    @objc private func checkForUpdates() { actions.checkForUpdates() }
+
+    @objc private func showUpdate() { actions.showUpdate() }
 
     @objc private func quit() { actions.quit() }
 }

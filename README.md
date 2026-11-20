@@ -85,7 +85,7 @@
     </td>
     <td valign="top">
       <h3>🔒 Gizliliğe saygılı</h3>
-      Ağ bağlantısı yok, analitik yok, hesap yok. Yerel Swift, neredeyse sıfır CPU.
+      Analitik yok, hesap yok. Tek ağ isteği, yalnızca sen izin verirsen günde bir kez (ya da sen bastığında) GitHub'dan son sürüm numarasını okumak. Yerel Swift, neredeyse sıfır CPU.
     </td>
   </tr>
 </table>
@@ -183,6 +183,17 @@ pusu version             Sürüm
 Süreyi Türkçe kısaltmalarla da yazabilirsin: `2s` (saat), `45d` (dakika), `1s30d`. Pusu çalışmıyorsa `pusu on` onu arka planda başlatır.
 
 URL'ler: `pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pusu://wake`, `pusu://settings`. Her web sayfası `pusu://` bağlantısı açabildiği için URL'ler bu zararsız komutlarla ve en fazla 8 saatlik oturumlarla sınırlı; ekranı kilitleme, karartma ve kapak modu menüde ve komut satırında kalır.
+
+</details>
+
+<details>
+<summary><b>Güncellemeler</b></summary>
+
+<br>
+
+İlk açılışta Pusu güncellemeleri nasıl denetleyeceğini sorar: **günde bir kez otomatik** ya da **yalnızca sen istediğinde**. Her iki durumda da menüdeki **Güncellemeleri Denetle…** ile istediğin an bakabilirsin; Ayarlar › Ayarlar › Güncellemeler'den değiştirebilirsin.
+
+Denetim yalnızca GitHub'ın herkese açık "son sürüm" adresini okur; çerez, kimlik ya da kullanım verisi gönderilmez. Yeni sürüm varsa menüde görünür ve bir kez bildirim gelir. Homebrew ile kurduysan `brew update && brew upgrade --cask pusu` yeterli; değilse sürüm sayfasından yeni `.dmg`'yi indir. Ayrıca GitHub'da repoyu **Watch › Custom › Releases** ile takip edebilirsin.
 
 </details>
 

@@ -39,6 +39,7 @@ enum UISnapshot {
                         session: fixture.session,
                         history: fixture.history,
                         ui: ui,
+                        updates: UpdateMonitor(settings: fixture.settings, currentVersion: "dev") { _, _ in },
                         actions: .noop
                     )
                     let height: CGFloat
@@ -317,7 +318,8 @@ enum UISnapshot {
 extension SettingsActions {
     static let noop = SettingsActions(
         toggle: {}, start: { _ in }, stop: {}, setLid: { _ in }, installHelper: {}, removeHelper: {},
-        remoteMode: {}, blackout: {}, lock: {}, wake: {}, openSharingSettings: {}, copyDiagnostics: {}, about: {}
+        remoteMode: {}, blackout: {}, lock: {}, wake: {}, openSharingSettings: {}, copyDiagnostics: {}, about: {},
+        checkForUpdates: {}, showUpdate: {}
     )
 }
 #endif
