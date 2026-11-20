@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift sürümü
+        run: swift --version
+
+      - name: Testler
+        run: swift run PusuTests
+
+      - name: Universal paket
+        run: scripts/build.sh release
+
+      - name: Paket kontrolü
+        run: |
+          lipo -archs build/Pusu.app/Contents/MacOS/Pusu | grep -q x86_64
+          lipo -archs build/Pusu.app/Contents/MacOS/Pusu | grep -q arm64
+          codesign --verify --strict --deep build/Pusu.app
+          build/Pusu.app/Contents/MacOS/Pusu version

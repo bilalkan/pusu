@@ -1,0 +1,11 @@
+.build/
+build/
+*.xcodeproj
+.DS_Store
+import/
+*.log
+dist/
+
+# Yerel, yayınlanmayan notlar ve kişisel ekran görüntüleri
+HANDOFF.md
+Resources/Icons/A/menubar/onizleme/gercek-*.png
