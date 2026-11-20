@@ -5,6 +5,20 @@ import PusuCore
 private let helperVersion = HelperProtocol.version
 private let arguments = CommandLine.arguments
 
+/// Yardımcıyı kuran uygulamanın yolu (`--app-bundle`). Uygulama kaldırılınca yardımcı da
+/// kendini kaldırır; yol yoksa (eski kurulum) bu izleme yapılmaz.
+private let appBundlePath: String? = {
+    guard let index = arguments.firstIndex(of: "--app-bundle"), arguments.indices.contains(index + 1) else { return nil }
+    let path = arguments[index + 1]
+    return AppPresenceTracker.isValidBundlePath(path) ? path : nil
+}()
+
+/// Uygulamanın varlığı. Yalnızca seri kuyruktan erişilir. Herhangi bir istemci isteği
+/// (uygulama 30 sn'de bir yoklar) uygulamanın çalıştığını gösterir ve sayacı sıfırlar.
+private var presence = AppPresenceTracker()
+/// `launchctl bootout` başarısız olduysa bir sonraki kontrolde yeniden denenir.
+private var bootoutPending = false
+
 private func log(_ message: String) {
     let formatter = ISO8601DateFormatter()
     fputs("[\(formatter.string(from: Date()))] \(message)\n", stderr)
@@ -61,7 +75,8 @@ private func status(ok: Bool = true, error: String? = nil) -> HelperStatus {
         version: helperVersion,
         sleepDisabled: currentSleepDisabled() ?? false,
         original: readOriginal(),
-        error: error
+        error: error,
+        appBundle: appBundlePath
     )
 }
 
@@ -71,7 +86,7 @@ private func handle(command: String) -> HelperStatus {
     }
 
     switch parsed {
-    case .ping, .status, .sleepDisabled:
+    case .ping, .status:
         return status()
 
     case .lidOn:
@@ -116,6 +131,9 @@ private func handleClient(_ client: Int32) {
     // (ve admin zaten sudo kullanabilir). Konsol kullanıcısı kontrolü hızlı kullanıcı
     // geçişinde meşru sahibi dışarıda bıraktığı için kullanılmaz.
 
+    // Bir istemci bağlandı: uygulama (ya da CLI) çalışıyor demektir.
+    _ = presence.observe(appExists: true)
+
     // Komutlar kısa sabit kelimelerdir; 256 bayttan uzun girdiyi okumayız.
     var buffer = [UInt8](repeating: 0, count: 256)
     let count = buffer.withUnsafeMutableBytes { bytes in
@@ -148,6 +166,59 @@ private func trimLogIfNeeded() {
     _ = ftruncate(STDERR_FILENO, 0)
     _ = lseek(STDERR_FILENO, 0, SEEK_SET)
     log("log truncated (was \(size.intValue) bytes)")
+}
+
+/// Kalıcı sistem loguna da yaz: yardımcının kendi log dosyası kaldırılırken silinir.
+private func systemLog(_ message: String) {
+    log(message)
+    let logger = Process()
+    logger.executableURL = URL(fileURLWithPath: "/usr/bin/logger")
+    logger.arguments = ["-t", "pusu-helper", message]
+    try? logger.run()
+    logger.waitUntilExit()
+}
+
+/// `launchctl bootout`'u bekletmeden başlatır; başarısız olursa bir sonraki kontrolde yeniden denenir.
+/// (Başarılı olursa launchd bize SIGTERM gönderir ve süreç orada biter.)
+private func requestBootout() {
+    bootoutPending = true
+    let bootout = Process()
+    bootout.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    bootout.arguments = ["bootout", "system/\(HelperProtocol.label)"]
+    bootout.terminationHandler = { process in
+        if process.terminationStatus != 0 {
+            log("launchctl bootout failed (\(process.terminationStatus)); will retry")
+        }
+    }
+    do {
+        try bootout.run()
+    } catch {
+        log("launchctl bootout could not start: \(error.localizedDescription)")
+    }
+}
+
+/// Uygulama kaldırılmış: SleepDisabled'ı geri yükle, dosyaları sil ve launchd'den çık.
+/// Geri yükleme başarısız olursa hiçbir şey silinmez; bir sonraki kontrolde yeniden denenir.
+/// Bootout başarısız olursa süreç çıkmaz (dosyalar silindiği için KeepAlive onu yeniden
+/// başlatamazdı); soket kapalı bekler ve bir sonraki kontrolde yeniden dener.
+private func selfUninstall(reason: String) {
+    if bootoutPending {
+        requestBootout()
+        return
+    }
+    if let original = readOriginal() {
+        guard setSleepDisabled(original) else {
+            log("self-uninstall postponed: SleepDisabled restore failed")
+            return
+        }
+    }
+    removeOriginal()
+    systemLog("self-uninstall: \(reason)")
+    for path in [HelperProtocol.daemonPlistPath, HelperProtocol.installedBinaryPath, HelperProtocol.logPath] {
+        try? FileManager.default.removeItem(atPath: path)
+    }
+    unlink(HelperProtocol.defaultSocketPath)
+    requestBootout()
 }
 
 private func serve() -> Never {
@@ -183,6 +254,21 @@ private func serve() -> Never {
         exit(0)
     }
     termination.resume()
+
+    // Uygulama izleme: dakikada bir; Homebrew güncellemesi gibi kısa boşluklar tolere edilir.
+    var presenceTimer: DispatchSourceTimer?
+    if let appBundlePath {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 60, repeating: 60)
+        timer.setEventHandler {
+            let exists = AppPresenceTracker.bundleExists(atPath: appBundlePath)
+            if presence.observe(appExists: exists) {
+                selfUninstall(reason: "\(appBundlePath) missing for \(Int(presence.gracePeriod / 60)) minutes")
+            }
+        }
+        timer.resume()
+        presenceTimer = timer
+    }
 
     // Root süreçte ortam değişkenleri dikkate alınmaz; yol her zaman sabittir.
     let path = HelperProtocol.defaultSocketPath
@@ -243,7 +329,7 @@ private func serve() -> Never {
         close(client)
     }
     acceptSource.resume()
-    withExtendedLifetime((termination, acceptSource)) {
+    withExtendedLifetime((termination, acceptSource, presenceTimer)) {
         dispatchMain()
     }
 }

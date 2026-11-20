@@ -134,6 +134,7 @@ The helper:
 
 - accepts four fixed commands (`ping`, `status`, `lid-on`, `lid-off`) over a Unix socket only the `admin` group can open, takes no other input and runs no shell commands;
 - remembers the original `SleepDisabled` value and puts it back when lid mode is turned off, when the helper is removed, and when it's stopped;
+- removes itself (after restoring `SleepDisabled`) once Pusu has been removed or moved for about 15 minutes, while Homebrew upgrades leave it alone. It can only be installed for a copy of Pusu in the Applications folder;
 - lives at `/Library/PrivilegedHelperTools/local.kan.pusu.helper` with `/Library/LaunchDaemons/local.kan.pusu.helper.plist`, logging to `/var/log/local.kan.pusu.helper.log`;
 - can be removed from Settings › System or with `pusu uninstall-helper`.
 
@@ -191,8 +192,8 @@ URLs: `pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pusu:
 <br>
 
 ```bash
-brew uninstall --cask pusu          # removes the app and the helper
-brew uninstall --zap --cask pusu    # also removes settings and history
+brew uninstall --cask pusu          # removes the app; the helper removes itself about 15 minutes later
+brew uninstall --zap --cask pusu    # removes the helper right away, plus settings and history
 ```
 
 Without Homebrew, run `scripts/uninstall.sh` from a clone of this repository. It removes the app, the helper (restoring `SleepDisabled`), the login item, settings and history.

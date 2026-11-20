@@ -36,6 +36,7 @@ final class FakeAssertions: PowerAsserting {
 
 final class FakeLid: LidControlling {
     var helperAvailable = true
+    var helperResponding: Bool { helperAvailable }
     var usesFallback = false
     var sleepDisabledValue = false
     var failTurningOff = false
@@ -114,7 +115,8 @@ final class SessionHarness {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("pusu-session-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defaultsSuite = "pusu.tests.session.\(UUID().uuidString)"
+        defaultsSuite = "pusu.tests.session"
+        removeDefaultsSuite(defaultsSuite)
         settings = SettingsStore(defaults: UserDefaults(suiteName: defaultsSuite)!)
         configure(settings)
         history = SessionHistoryStore(
@@ -153,11 +155,20 @@ final class SessionHarness {
 
     func tearDown() {
         controller.shutdown()
-        UserDefaults().removePersistentDomain(forName: defaultsSuite)
+        removeDefaultsSuite(defaultsSuite)
         try? FileManager.default.removeItem(at: directory)
     }
 }
 
 func battery(_ percent: Int, onBattery: Bool = true, charging: Bool = false) -> BatteryStatus {
     BatteryStatus(percent: percent, isOnBattery: onBattery, isCharging: charging, isPresent: true)
+}
+
+/// Test ayar alanını hem cfprefsd'den hem diskten siler; ~/Library/Preferences'ta kalıntı bırakmaz.
+func removeDefaultsSuite(_ name: String) {
+    UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
+    UserDefaults().removePersistentDomain(forName: name)
+    let file = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Preferences/\(name).plist")
+    try? FileManager.default.removeItem(at: file)
 }

@@ -216,7 +216,7 @@ enum UISnapshot {
     /// Gerçekçi ama sahte bir oturum: 2 saatlik süre, pil %76, örnek geçmiş.
     private final class Fixture {
         let directory: URL
-        let suite = "pusu.snapshot.\(UUID().uuidString)"
+        let suite = "pusu.snapshot"
         let settings: SettingsStore
         let history: SessionHistoryStore
         let session: SessionController
@@ -227,7 +227,6 @@ enum UISnapshot {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             settings = SettingsStore(defaults: UserDefaults(suiteName: suite)!)
             settings.defaultDuration = .twoHours
-            settings.language = Localization.resolved
             history = SessionHistoryStore(
                 historyURL: directory.appendingPathComponent("history.json"),
                 activeURL: directory.appendingPathComponent("active-session.json")
@@ -276,6 +275,8 @@ enum UISnapshot {
         func tearDown() {
             session.shutdown()
             UserDefaults().removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Preferences/\(suite).plist"))
             try? FileManager.default.removeItem(at: directory)
         }
     }
@@ -296,6 +297,7 @@ enum UISnapshot {
 
     private final class SnapshotLid: LidControlling {
         var helperAvailable: Bool { true }
+        var helperResponding: Bool { true }
         var usesFallback: Bool { false }
         func helperStatus() -> HelperStatus? { HelperStatus(version: HelperProtocol.version) }
         func sleepDisabled(timeout: TimeInterval) -> Bool? { false }

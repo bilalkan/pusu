@@ -305,3 +305,64 @@ func runURLStrictnessChecks() {
     expectNil(url("pusu://on?minutes="), "url: boş süre reddedilir")
     expectEqual(url("pusu://on"), .on(minutes: nil), "url: süresiz istek (uygulama 8 saatle sınırlar)")
 }
+
+/// Yardımcının "uygulama kaldırıldı mı?" kararı.
+func runAppPresenceChecks() {
+    let start = Date(timeIntervalSince1970: 1_000_000)
+    var tracker = AppPresenceTracker(gracePeriod: 15 * 60)
+    expect(!tracker.observe(appExists: true, at: start), "presence: uygulama varken kaldırma yok")
+    expect(!tracker.observe(appExists: false, at: start), "presence: ilk yokluk hemen kaldırmaz")
+    expect(!tracker.observe(appExists: false, at: start.addingTimeInterval(14 * 60)), "presence: 14 dk yetmez")
+    // Homebrew güncellemesi gibi kısa bir boşluktan sonra uygulama geri gelirse sayaç sıfırlanır.
+    expect(!tracker.observe(appExists: true, at: start.addingTimeInterval(14 * 60 + 30)), "presence: geri gelince sıfırlanır")
+    expectNil(tracker.missingSince, "presence: sayaç temiz")
+    expect(!tracker.observe(appExists: false, at: start.addingTimeInterval(20 * 60)), "presence: yeni yokluk baştan sayar")
+    expect(tracker.observe(appExists: false, at: start.addingTimeInterval(35 * 60)), "presence: 15 dk kesintisiz yokluk kaldırır")
+
+    expect(AppPresenceTracker.isValidBundlePath("/Applications/Pusu.app"), "presence: geçerli yol")
+    expect(!AppPresenceTracker.isValidBundlePath("Applications/Pusu.app"), "presence: göreli yol reddedilir")
+    expect(!AppPresenceTracker.isValidBundlePath("/Applications/Pusu"), "presence: .app olmayan yol reddedilir")
+    expect(!AppPresenceTracker.isValidBundlePath("/Applications/Pu\nsu.app"), "presence: kontrol karakteri reddedilir")
+    expect(!AppPresenceTracker.bundleExists(atPath: "/Applications/Yok-\(UUID().uuidString).app"), "presence: olmayan paket")
+    expect(AppPresenceTracker.bundleExists(atPath: "/System/Applications/Calculator.app"), "presence: var olan paket")
+}
+
+/// Kod incelemesinin regresyon testleri: kararlı konum, taşınan uygulama, dışarıdan geri alınan uyku.
+func runReviewRegressionChecks() {
+    let home = "/Users/ornek"
+    func stable(_ path: String) -> Bool { AppPresenceTracker.isStableBundleLocation(path, home: home) }
+    expect(stable("/Applications/Pusu.app"), "stable: /Applications")
+    expect(stable("/Applications/Araçlar/Pusu.app"), "stable: /Applications alt klasörü")
+    expect(stable("/Users/ornek/Applications/Pusu.app"), "stable: ~/Applications")
+    expect(!stable("/Volumes/Pusu 1.0.2/Pusu.app"), "stable: disk görüntüsü değil")
+    expect(!stable("/Users/ornek/Downloads/Pusu.app"), "stable: İndirilenler değil")
+    expect(!stable("/Users/ornek/Desktop/pusu-app/build/Pusu.app"), "stable: Masaüstü değil")
+    expect(!stable("/private/var/folders/x/AppTranslocation/y/d/Pusu.app"), "stable: translocation değil")
+
+    // Uygulama taşındıysa yardımcı eski sayılır ("Yardımcıyı güncelle…")
+    let previous = HelperProtocol.currentAppBundlePath
+    HelperProtocol.currentAppBundlePath = "/Applications/Pusu.app"
+    expect(HelperProtocol.isCurrent(HelperStatus(version: HelperProtocol.version, appBundle: "/Applications/Pusu.app")), "current: aynı yol")
+    expect(!HelperProtocol.isCurrent(HelperStatus(version: HelperProtocol.version, appBundle: "/Users/ornek/Downloads/Pusu.app")), "current: farklı yol eski sayılır")
+    expect(!HelperProtocol.isCurrent(HelperStatus(version: "1.4", appBundle: "/Applications/Pusu.app")), "current: eski sürüm")
+    HelperProtocol.currentAppBundlePath = previous
+
+    // Uyku dışarıdan geri alınırsa kapak modu durumu düzeltilir ve bildirilir
+    do {
+        let h = SessionHarness(battery: battery(90, onBattery: false))
+        let c = h.controller!
+        var done = false
+        c.setLidModeAsync(true) { _ in done = true }
+        h.spin { done }
+        expect(c.lidMode, "reconcile: kapak modu açık")
+        h.lid.sleepDisabledValue = false   // ör. yardımcı kendini kaldırdı
+        c.refreshBattery()
+        expect(!c.lidMode, "reconcile: kapak modu kapalı görünür")
+        let told = h.events.contains { event in
+            if case .lidChanged(false) = event { return true }
+            return false
+        }
+        expect(told, "reconcile: arayüze bildirildi")
+        h.tearDown()
+    }
+}

@@ -23,8 +23,10 @@ public extension PowerAsserting {
 
 /// Kapak modu (`pmset disablesleep`). Yardımcı varsa onun üzerinden, yoksa yönetici parolasıyla.
 public protocol LidControlling: AnyObject {
-    /// Root yardımcısı yanıt veriyor mu?
+    /// Güncel root yardımcısı yanıt veriyor mu? (Kapak modunu açmak için gerekir.)
     var helperAvailable: Bool { get }
+    /// Herhangi bir sürüm yardımcı yanıt veriyor mu? (Kapatmak/geri yüklemek için yeterli.)
+    var helperResponding: Bool { get }
     /// Yardımcı yokken SleepDisabled'ı Pusu mu değiştirdi?
     var usesFallback: Bool { get }
 

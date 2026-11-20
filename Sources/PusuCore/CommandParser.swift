@@ -43,7 +43,10 @@ public enum PusuCommand: Equatable {
     public init?(wireName: String, minutes: Int?) {
         switch wireName {
         case "toggle": self = .toggle
-        case "on": self = .on(minutes: minutes.flatMap { (1...CommandParser.maxMinutes).contains($0) ? $0 : nil })
+        case "on":
+            // Verilmiş ama geçersiz bir süre komutu reddeder; sessizce varsayılana dönmez.
+            if let minutes, !(1...CommandParser.maxMinutes).contains(minutes) { return nil }
+            self = .on(minutes: minutes)
         case "off": self = .off
         case "blackout": self = .blackout
         case "lock": self = .lock

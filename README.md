@@ -134,6 +134,7 @@ Yardımcı:
 
 - yalnızca `admin` grubunun açabildiği bir Unix soketinden dört sabit komut (`ping`, `status`, `lid-on`, `lid-off`) kabul eder; başka girdi almaz, kabuk komutu çalıştırmaz;
 - orijinal `SleepDisabled` değerini saklar; kapak modu kapatıldığında, yardımcı kaldırıldığında ve durdurulduğunda geri yükler;
+- Pusu kaldırılır ya da taşınırsa (uygulama yaklaşık 15 dakika ortada olmazsa) `SleepDisabled`'ı geri yükleyip kendini kaldırır; Homebrew güncellemeleri yardımcıya dokunmaz. Yardımcı yalnızca Uygulamalar klasöründeki bir Pusu için kurulabilir;
 - `/Library/PrivilegedHelperTools/local.kan.pusu.helper` ve `/Library/LaunchDaemons/local.kan.pusu.helper.plist` konumlarında durur, `/var/log/local.kan.pusu.helper.log` dosyasına log yazar;
 - Ayarlar › Sistem'den ya da `pusu uninstall-helper` ile kaldırılabilir.
 
@@ -191,8 +192,8 @@ URL'ler: `pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pu
 <br>
 
 ```bash
-brew uninstall --cask pusu          # uygulamayı ve yardımcıyı kaldırır
-brew uninstall --zap --cask pusu    # ayarları ve geçmişi de siler
+brew uninstall --cask pusu          # uygulamayı kaldırır; yardımcı yaklaşık 15 dakika sonra kendini kaldırır
+brew uninstall --zap --cask pusu    # yardımcıyı hemen kaldırır, ayarları ve geçmişi de siler
 ```
 
 Homebrew kullanmadıysan bu deponun bir kopyasında `scripts/uninstall.sh` çalıştır. Uygulamayı, yardımcıyı (`SleepDisabled` geri alınır), giriş öğesini, ayarları ve geçmişi kaldırır.

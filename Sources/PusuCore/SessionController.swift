@@ -424,7 +424,7 @@ public final class SessionController: NSObject, ObservableObject {
         }
         stopTimers()
         assertions.releaseAll()
-        if lidMode, lid.helperAvailable {
+        if lidMode, lid.helperResponding {
             if (try? lid.setEnabled(false, allowPrompt: false)) != nil {
                 lidMode = false
             }
@@ -444,6 +444,21 @@ public final class SessionController: NSObject, ObservableObject {
         battery = status
         sleepDisabledActive = lid.sleepDisabled() == true
         onEvent?(.batteryUpdated(status))
+
+        // Kapak modu açık sanıyoruz ama SleepDisabled dışarıdan geri alınmış (ör. yardımcı
+        // kendini kaldırdı ya da kullanıcı pmset çalıştırdı): durumu düzelt ve haber ver.
+        if lidMode, !sleepDisabledActive {
+            lidMode = false
+            writeRuntime()
+            onEvent?(.lidChanged(false))
+            onEvent?(.message(
+                title: L("Kapak modu kapandı", "Lid mode turned off"),
+                body: L(
+                    "Uyku ayarı Pusu dışında geri alındı; kapak kapanınca Mac uyuyabilir.",
+                    "The sleep setting was restored outside Pusu; the Mac may sleep when the lid closes."
+                )
+            ))
+        }
 
         guard isOn else { return }
 
@@ -680,6 +695,7 @@ public enum Diagnostics {
         if let status = session.lid.helperStatus() {
             lines.append("  running: \(status.ok), version: \(status.version ?? "-") (bundled: \(HelperProtocol.version))")
             lines.append("  SleepDisabled: \(status.sleepDisabled), original: \(status.original.map { $0 ? "1" : "0" } ?? "-")")
+            lines.append("  watching: \(status.appBundle ?? "-") (this app: \(HelperProtocol.currentAppBundlePath ?? "-"))")
         } else {
             lines.append("  not running / not installed")
         }

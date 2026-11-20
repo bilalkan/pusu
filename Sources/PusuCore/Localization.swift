@@ -34,7 +34,10 @@ public enum Localization {
         get {
             lock.lock(); defer { lock.unlock() }
             if let cachedPreference { return cachedPreference }
+            // `pusu` komutu sembolik bağ üzerinden çalışınca standart alan uygulamanınki olmaz;
+            // seçimi uygulamanın ayar alanından da oku.
             let raw = UserDefaults.standard.string(forKey: defaultsKey)
+                ?? UserDefaults(suiteName: "local.kan.pusu")?.string(forKey: defaultsKey)
             let value = raw.flatMap(AppLanguage.init(rawValue:)) ?? .system
             cachedPreference = value
             return value

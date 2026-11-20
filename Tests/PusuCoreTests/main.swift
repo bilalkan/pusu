@@ -83,9 +83,10 @@ runChecks("Battery") {
 // MARK: - Settings
 
 runChecks("Settings") {
-    let suite = "pusu.tests.\(UUID().uuidString)"
+    let suite = "pusu.tests"
+    removeDefaultsSuite(suite)
     let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite) }
+    defer { removeDefaultsSuite(suite) }
 
     let store = SettingsStore(defaults: defaults)
     expect(store.keepDisplayAwake, "varsayılan ekran açık")
@@ -290,6 +291,8 @@ runChecks("Security policy") { runSecurityPolicyChecks() }
 runChecks("SessionController") { runSessionControllerChecks() }
 runChecks("External commands") { runExternalCommandChecks() }
 runChecks("URL strictness") { runURLStrictnessChecks() }
+runChecks("App presence") { runAppPresenceChecks() }
+runChecks("Review regressions") { runReviewRegressionChecks() }
 
 // MARK: - Summary
 

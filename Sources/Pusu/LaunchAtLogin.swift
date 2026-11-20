@@ -78,11 +78,7 @@ enum LaunchAtLogin {
     /// Uygulama geçici bir yerden (indirilen .dmg, App Translocation, İndirilenler) açıldıysa
     /// giriş öğesini oraya yönlendirmeyelim.
     static var bundleIsInStableLocation: Bool {
-        let path = Bundle.main.bundlePath
-        if path.contains("/AppTranslocation/") || path.hasPrefix("/Volumes/") || path.hasPrefix("/private/var/folders/") {
-            return false
-        }
-        return path.hasPrefix("/Applications/") || path.hasPrefix(FileManager.default.homeDirectoryForCurrentUser.path + "/Applications/")
+        AppPresenceTracker.isStableBundleLocation(Bundle.main.bundlePath)
     }
 
     static func sync(_ enabled: Bool) {

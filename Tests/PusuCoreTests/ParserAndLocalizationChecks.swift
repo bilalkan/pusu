@@ -48,7 +48,7 @@ func runCommandParserChecks() {
     expectNil(url("pusu://rm-rf"), "url: bilinmeyen komut")
     expectNil(url("pusu://lid-on"), "url: kapak modu web'den tetiklenemez")
 
-    expectEqual(PusuCommand(wireName: "on", minutes: -5), .on(minutes: nil), "wire: negatif dakika yok sayılır")
+    expectNil(PusuCommand(wireName: "on", minutes: -5), "wire: negatif dakika reddedilir")
     expectNil(PusuCommand(wireName: "nope", minutes: nil), "wire: bilinmeyen")
     for command in [PusuCommand.toggle, .on(minutes: 5), .off, .blackout, .lock, .vnc, .wake, .settings, .diagnostics, .lid(on: true), .lid(on: false), .lid(on: nil)] {
         expectEqual(PusuCommand(wireName: command.wireName, minutes: command.minutes), command, "wire: gidiş-dönüş \(command.wireName)")
@@ -133,7 +133,7 @@ func runSecurityPolicyChecks() {
     expectEqual(url("pusu://on?minutes=90"), .on(minutes: 90), "url: normal süre aynen")
 
     // Dağıtık bildirim: süre sınırı ve tanılama yasağı
-    expectEqual(PusuCommand(wireName: "on", minutes: 200_000_000_000_000_000), .on(minutes: nil), "wire: devasa dakika reddedilir")
+    expectNil(PusuCommand(wireName: "on", minutes: 200_000_000_000_000_000), "wire: devasa dakika reddedilir")
     expectEqual(PusuCommand(wireName: "on", minutes: CommandParser.maxMinutes), .on(minutes: CommandParser.maxMinutes), "wire: üst sınır kabul")
     expect(!CommandParser.isAllowedFromDistributedNotification(.diagnostics), "wire: tanılama reddedilir")
     expect(CommandParser.isAllowedFromDistributedNotification(.lid(on: true)), "wire: lid (yalnız yardımcı varsa) izinli")

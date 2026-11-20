@@ -7,7 +7,6 @@ public enum HelperCommand: String, Codable {
     case status
     case lidOn = "lid-on"
     case lidOff = "lid-off"
-    case sleepDisabled = "sleepdisabled"
 }
 
 public struct HelperStatus: Codable, Equatable {
@@ -16,19 +15,23 @@ public struct HelperStatus: Codable, Equatable {
     public var sleepDisabled: Bool
     public var original: Bool?
     public var error: String?
+    /// Yardımcının izlediği uygulama yolu (`--app-bundle`); 1.5 öncesi yardımcılarda yok.
+    public var appBundle: String?
 
     public init(
         ok: Bool = true,
         version: String? = nil,
         sleepDisabled: Bool = false,
         original: Bool? = nil,
-        error: String? = nil
+        error: String? = nil,
+        appBundle: String? = nil
     ) {
         self.ok = ok
         self.version = version
         self.sleepDisabled = sleepDisabled
         self.original = original
         self.error = error
+        self.appBundle = appBundle
     }
 }
 
@@ -37,6 +40,10 @@ public enum HelperError: LocalizedError {
     case installFailed(String)
     case helperUnavailable
     case adminCancelled
+    /// Komut dışarıdan geldiği için yönetici parolası sorulamadı.
+    case promptNotAllowed
+    /// Kapak modunu dışarıdan açmak güncel yardımcı ister.
+    case helperNeededForExternalLidOn
     case commandFailed(String)
     case timedOut
 
@@ -50,6 +57,16 @@ public enum HelperError: LocalizedError {
             return L("Yönetici yardımcısı çalışmıyor.", "The privileged helper is not running.")
         case .adminCancelled:
             return L("Yönetici izni verilmedi.", "Administrator permission was not granted.")
+        case .helperNeededForExternalLidOn:
+            return L(
+                "Kapak modunu komut satırından ya da başka bir uygulamadan açmak için güncel yönetici yardımcısı gerekir (Ayarlar › Sistem). İsterseniz Pusu menüsünden açın.",
+                "Turning on lid mode from the command line or another app needs an up-to-date privileged helper (Settings › System). You can also use the Pusu menu."
+            )
+        case .promptNotAllowed:
+            return L(
+                "Kapak modu hâlâ açık: yönetici yardımcısı olmadan yalnızca Pusu menüsünden kapatılabilir.",
+                "Lid mode is still on: without the privileged helper it can only be turned off from the Pusu menu."
+            )
         case .commandFailed(let detail):
             return L("Komut başarısız: \(detail)", "Command failed: \(detail)")
         case .timedOut:
@@ -67,7 +84,7 @@ public enum HelperProtocol {
     public static let logPath = "/var/log/local.kan.pusu.helper.log"
     /// Uygulamayla birlikte gelen yardımcının protokol sürümü. Yardımcı davranışı
     /// değiştiğinde artırılır; kurulu yardımcı farklıysa arayüz güncelleme önerir.
-    public static let version = "1.4"
+    public static let version = "1.5"
 
     /// İstemcinin bağlandığı soket. `PUSU_HELPER_SOCKET` yalnızca root olmayan
     /// süreçlerde (geliştirme/test) dikkate alınır; root yardımcı her zaman sabit yolu kullanır.
@@ -78,10 +95,18 @@ public enum HelperProtocol {
         return defaultSocketPath
     }
 
-    /// Kurulu yardımcı bu uygulama sürümüyle aynı protokolü mü konuşuyor?
+    /// Bu süreci içeren uygulama paketi. Uygulama ve CLI açılışta ayarlar; yardımcının
+    /// izlediği yolla karşılaştırılır.
+    public static var currentAppBundlePath: String?
+
+    /// Kurulu yardımcı bu uygulama sürümüyle aynı protokolü konuşuyor ve bu uygulamayı mı izliyor?
+    /// Uygulama taşındıysa yardımcı yanlış yolu izler; o zaman da "güncelle" önerilir.
     public static func isCurrent(_ status: HelperStatus?) -> Bool {
-        guard let status else { return false }
-        return status.version == version
+        guard let status, status.version == version else { return false }
+        if let watched = status.appBundle, let current = currentAppBundlePath {
+            return watched == current
+        }
+        return true
     }
 
     public static func encode(_ command: HelperCommand) -> Data {
@@ -234,7 +259,15 @@ public enum HelperInstaller {
     ///   Root betiği yardımcıyı önce yalnızca root'un erişebildiği bir klasöre kopyalar, özeti
     ///   doğrular ve ancak sonra kurar; böylece parola penceresi açıkken paketteki dosyanın
     ///   değiştirilmesi işe yaramaz. Plist de diskte değil, betiğin içinde üretilir.
-    public static func install(helperBinary: URL, expectedSHA256: String?) throws {
+    ///   - appBundlePath: Yardımcıyı kuran uygulama. Uygulama yaklaşık 15 dakika boyunca
+    ///     ortada olmazsa yardımcı kendini kaldırır. Kalıcı bir konum olmalıdır.
+    public static func install(helperBinary: URL, expectedSHA256: String?, appBundlePath: String?) throws {
+        guard let appBundlePath, AppPresenceTracker.isStableBundleLocation(appBundlePath) else {
+            throw HelperError.installFailed(L(
+                "Yönetici yardımcısını kurmak için önce Pusu'yu Uygulamalar klasörüne taşıyın. Disk görüntüsünden ya da İndirilenler'den çalışan bir kopya için yardımcı kurulmaz.",
+                "Move Pusu to the Applications folder before installing the privileged helper. It can't be installed for a copy running from a disk image or Downloads."
+            ))
+        }
         guard FileManager.default.isExecutableFile(atPath: helperBinary.path) else {
             throw HelperError.installFailed(L("pusu-helper çalıştırılabilir dosyası bulunamadı.", "The pusu-helper executable was not found."))
         }
@@ -251,7 +284,7 @@ public enum HelperInstaller {
 
         let plist: [String: Any] = [
             "Label": HelperProtocol.label,
-            "ProgramArguments": [HelperProtocol.installedBinaryPath],
+            "ProgramArguments": [HelperProtocol.installedBinaryPath, "--app-bundle", appBundlePath],
             "RunAtLoad": true,
             "KeepAlive": true,
             "ProcessType": "Interactive",
@@ -338,7 +371,7 @@ public final class LidController: LidControlling {
     }
 
     /// Kapatmak (geri yüklemek) için sürümü ne olursa olsun yanıt veren yardımcı yeterlidir.
-    private var helperResponding: Bool {
+    public var helperResponding: Bool {
         HelperClient.ping() != nil
     }
 
@@ -350,9 +383,10 @@ public final class LidController: LidControlling {
         HelperClient.status()
     }
 
-    /// Yardımcı kuruluysa ve meşgulse birkaç kez daha dener.
+    /// Yardımcı kuruluysa ve meşgulse birkaç kez daha dener. Ana thread'de beklemez
+    /// (menü donmasın); orada tek denemeyle yetinilir.
     private func helperRespondsAfterRetry() -> Bool {
-        guard HelperInstaller.daemonPlistExists else { return false }
+        guard HelperInstaller.daemonPlistExists, !Thread.isMainThread else { return false }
         for _ in 0..<3 {
             Thread.sleep(forTimeInterval: 0.4)
             if HelperClient.ping(timeout: 2) != nil { return true }
@@ -395,7 +429,7 @@ public final class LidController: LidControlling {
                 }
                 return
             }
-            guard allowPrompt else { throw HelperError.adminCancelled }
+            guard allowPrompt else { throw HelperError.promptNotAllowed }
             if !settings.fallbackSleepDisabledActive {
                 settings.fallbackSleepDisabledOriginal = sleepDisabled() ?? false
                 settings.fallbackSleepDisabledActive = true
@@ -412,7 +446,7 @@ public final class LidController: LidControlling {
             }
         } else {
             if helperResponding || helperRespondsAfterRetry() {
-                guard let status = HelperClient.send(.lidOff, timeout: 4), status.ok else {
+                guard let status = HelperClient.send(.lidOff, timeout: Thread.isMainThread ? 2 : 4), status.ok else {
                     throw HelperError.commandFailed(L("Kapak modu kapatılamadı.", "Could not turn off lid mode."))
                 }
                 return
@@ -433,7 +467,7 @@ public final class LidController: LidControlling {
                 settings.fallbackSleepDisabledOriginal = nil
                 return
             }
-            guard allowPrompt else { throw HelperError.adminCancelled }
+            guard allowPrompt else { throw HelperError.promptNotAllowed }
             let result = Shell.runAsAdmin(command: "/usr/bin/pmset -a disablesleep \(original ? 1 : 0)")
             guard result.succeeded else {
                 if result.wasCancelled { throw HelperError.adminCancelled }

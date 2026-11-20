@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.2 — 2026-11-20
+
+- `brew upgrade` keeps the privileged helper: no password prompt during upgrades and no need to reinstall the helper afterwards. (Upgrading from 1.0.1 still removes it once, because Homebrew uses the old version's uninstall steps.)
+- When Pusu is uninstalled or moved — with Homebrew, by dragging it to the Trash, or otherwise — the helper restores `SleepDisabled` and removes itself once the app has been gone for about 15 minutes. This needs the updated helper (Settings › System › Update Helper…). `brew uninstall --zap` removes it right away, restoring `SleepDisabled` even if the helper isn't running.
+- The helper can only be installed for a copy of Pusu in the Applications folder; Pusu offers to update it if the app was moved.
+- If the sleep setting is restored outside Pusu while lid mode is on, Pusu turns lid mode off in its menu and tells you.
+- An outdated helper can still turn lid mode off (also when quitting); messages no longer call it "not installed".
+- `pusu lid on|off` prints a clear error and exits non-zero when it can't proceed without a password prompt.
+- Out-of-range durations sent by other apps are rejected instead of falling back to the default.
+- `pusu version` and the CLI's language now match the installed app when run through the `pusu` link.
+- Turning lid mode off from the menu no longer waits for slow helper retries on the main thread.
+
 ## 1.0.1 — 2026-11-20
 
 Security hardening after two independent reviews (no critical or high findings), plus small fixes.

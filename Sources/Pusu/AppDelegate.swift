@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        HelperProtocol.currentAppBundlePath = AppBundle.url?.path
         // Komut dinleyicisi en başta kaydedilir: `pusu` CLI, uygulama runtime.json'a PID'ini
         // yazınca komut gönderir; o anda dinleyici hazır olmalı.
         commandObserver = DistributedNotificationCenter.default().addObserver(
@@ -152,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if session.lidMode, !session.lid.helperAvailable {
+        if session.lidMode, !session.lid.helperResponding {
             AppActivation.activate()
             let alert = NSAlert()
             alert.alertStyle = .warning
@@ -317,13 +318,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         \(HelperProtocol.installedBinaryPath)
         \(HelperProtocol.daemonPlistPath)
 
-        Yardımcı yalnızca admin grubunun erişebildiği bir soketten sabit komutlar (ping, status, lid-on, lid-off) kabul eder. Kaldırmak için Ayarlar › Sistem'deki "Yardımcıyı kaldır…" düğmesini veya `pusu uninstall-helper` komutunu kullanabilirsiniz.
+        Yardımcı yalnızca admin grubunun erişebildiği bir soketten sabit komutlar (ping, status, lid-on, lid-off) kabul eder. Pusu kaldırılır ya da taşınırsa (uygulama yaklaşık 15 dakika ortada olmazsa) uyku ayarını geri yükleyip kendini kaldırır. Elle kaldırmak için Ayarlar › Sistem'deki "Yardımcıyı kaldır…" düğmesini veya `pusu uninstall-helper` komutunu kullanabilirsiniz.
         """, """
         Pusu installs a small root helper whose only job is to change `pmset -a disablesleep`:
         \(HelperProtocol.installedBinaryPath)
         \(HelperProtocol.daemonPlistPath)
 
-        The helper accepts only fixed commands (ping, status, lid-on, lid-off) over a socket that only the admin group can reach. To remove it, use "Remove Helper…" in Settings › System or run `pusu uninstall-helper`.
+        The helper accepts only fixed commands (ping, status, lid-on, lid-off) over a socket that only the admin group can reach. If Pusu is removed or moved (the app is gone for about 15 minutes), it restores the sleep setting and removes itself. To remove it by hand, use "Remove Helper…" in Settings › System or run `pusu uninstall-helper`.
         """)
         confirm.addButton(withTitle: isUpdate ? L("Güncelle", "Update") : L("Kur", "Install"))
         confirm.addButton(withTitle: L("İptal", "Cancel"))
@@ -334,7 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
-                try HelperInstaller.install(helperBinary: helperURL, expectedSHA256: AppBundle.helperSHA256)
+                try HelperInstaller.install(helperBinary: helperURL, expectedSHA256: AppBundle.helperSHA256, appBundlePath: AppBundle.url?.path)
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .pusuHelperChanged, object: nil)
                     self?.notify(
@@ -684,14 +685,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .lid(let on):
             let target = on ?? !session.lidMode
             guard target != session.lidMode else { return }
-            if !source.mayPromptForAdmin, !session.lid.helperAvailable {
-                notify(
-                    L("Kapak modu", "Lid mode"),
-                    L(
-                        "Komut satırından kapak modu için yönetici yardımcısı gerekir (Ayarlar › Sistem). Ya da menüden açın.",
-                        "Lid mode from the command line needs the privileged helper (Settings › System), or use the menu."
-                    )
-                )
+            // Dışarıdan: açmak güncel yardımcı ister, kapatmak yanıt veren her yardımcıyla olur.
+            // (CLI bu durumu zaten kendisi kontrol edip terminale yazar.)
+            let canRun = target ? session.lid.helperAvailable : session.lid.helperResponding
+            if !source.mayPromptForAdmin, !canRun {
+                let error: HelperError = target ? .helperNeededForExternalLidOn : .promptNotAllowed
+                notify(L("Kapak modu", "Lid mode"), error.localizedDescription)
                 return
             }
             setLid(target, allowPrompt: source.mayPromptForAdmin)

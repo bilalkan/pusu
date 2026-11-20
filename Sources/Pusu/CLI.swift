@@ -11,7 +11,10 @@ enum CLI {
 
     /// Info.plist'teki sürüm; geliştirme derlemesinde (paket dışı) sabit değere düşer.
     static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+        // `pusu` bir sembolik bağ üzerinden çağrıldığında Bundle.main paketi bulamaz;
+        // gerçek paketi AppBundle çözer.
+        let bundle = AppBundle.url.flatMap(Bundle.init(url:)) ?? Bundle.main
+        return bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     }
 
     /// Terminalden gelen bir komutu işler. `true` dönerse süreç hemen çıkmalıdır.
@@ -57,6 +60,23 @@ enum CLI {
         }
 
         let command = CommandParser.parse(arguments)
+        HelperProtocol.currentAppBundlePath = AppBundle.url?.path
+
+        // Kapak komutlarının sonucu terminalde görünsün: uygulama parola soramayacağı için
+        // gerekli yardımcı yoksa burada açıkça hata verilir.
+        if case .lid(let on)? = command {
+            let helper = HelperClient.ping()
+            let lidModeNow = RuntimeStateStore.read()?.lidMode ?? false
+            let wantsOn = on ?? !lidModeNow
+            if wantsOn, !HelperProtocol.isCurrent(helper) {
+                fputs(HelperError.helperNeededForExternalLidOn.localizedDescription + "\n", stderr)
+                exit(1)
+            }
+            if !wantsOn, lidModeNow, helper == nil {
+                fputs(HelperError.promptNotAllowed.localizedDescription + "\n", stderr)
+                exit(1)
+            }
+        }
 
         if let command, appIsRunning() {
             waitUntilAppIsReady()
@@ -112,11 +132,8 @@ enum CLI {
         else { return }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if RuntimeStateStore.read()?.pid == app.processIdentifier {
-                // Gözlemci, durum yazıldıktan sonra aynı açılış adımında kaydedilir.
-                Thread.sleep(forTimeInterval: 0.2)
-                return
-            }
+            // Uygulama komut dinleyicisini, runtime.json'u yazmadan önce kaydeder.
+            if RuntimeStateStore.read()?.pid == app.processIdentifier { return }
             Thread.sleep(forTimeInterval: 0.1)
         }
     }
@@ -199,7 +216,7 @@ enum CLI {
             exit(4)
         }
         do {
-            try HelperInstaller.install(helperBinary: url, expectedSHA256: AppBundle.helperSHA256)
+            try HelperInstaller.install(helperBinary: url, expectedSHA256: AppBundle.helperSHA256, appBundlePath: AppBundle.url?.path)
             print(L("Yönetici yardımcısı kuruldu.", "Privileged helper installed."))
         } catch {
             fputs(L("Kurulum başarısız: \(error.localizedDescription)\n", "Install failed: \(error.localizedDescription)\n"), stderr)
@@ -258,6 +275,7 @@ enum CLI {
         print("HELPER")
         if let status = HelperClient.status() {
             print("running, version: \(status.version ?? "-") (bundled: \(HelperProtocol.version)), SleepDisabled: \(status.sleepDisabled), original: \(status.original.map { $0 ? "1" : "0" } ?? "-")")
+            print("watching: \(status.appBundle ?? "-") (this app: \(AppBundle.url?.path ?? "-"))")
         } else {
             print("not running / not installed")
         }
