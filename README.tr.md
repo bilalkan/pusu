@@ -1,35 +1,86 @@
-# Pusu
-
-**Mac'ini uyanık tutar: süreli, kapak kapalıyken ya da uzaktan bağlanmaya hazır.**
-
-[English](README.md) · [İndir](https://github.com/bilalkan/pusu/releases/latest) · [Hata bildir](https://github.com/bilalkan/pusu/issues)
-
-Pusu, macOS için küçük ve yerel (native) bir menü çubuğu uygulamasıdır. Sistemin ve ekranın uykuya geçmesini engeller. Süre dolunca ya da pil azalınca kendini kapatır. Kapak kapalıyken de Mac'in çalışmaya devam etmesini sağlayabilir. VNC ile bağlanırken ekranı karartıp oturumu kilitleyebilir.
-
 <p align="center">
-  <img src="docs/screenshots/session-tr.png" width="420" alt="Pusu ayarları: Oturum sekmesi">
-  <img src="docs/screenshots/history-tr.png" width="420" alt="Pusu ayarları: Geçmiş sekmesi">
+  <img src="docs/banner-tr.png" alt="Pusu: Mac'in uyanık kalsın" width="100%">
 </p>
 
-## Özellikler
+<p align="center">
+  <a href="https://github.com/bilalkan/pusu/releases/latest"><img alt="Son sürüm" src="https://img.shields.io/github/v/release/bilalkan/pusu?style=flat-square&label=s%C3%BCr%C3%BCm&color=F5A524"></a>
+  <img alt="macOS 13 ve üstü" src="https://img.shields.io/badge/macOS-13%2B-1f2937?style=flat-square&logo=apple&logoColor=white">
+  <img alt="Universal" src="https://img.shields.io/badge/Apple%20silicon%20%2B%20Intel-universal-1f2937?style=flat-square">
+  <a href="https://github.com/bilalkan/pusu/actions/workflows/ci.yml"><img alt="Testler" src="https://img.shields.io/github/actions/workflow/status/bilalkan/pusu/ci.yml?style=flat-square&label=testler"></a>
+  <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/lisans-GPL--3.0-1f2937?style=flat-square"></a>
+</p>
 
-- **Uyanık kalma:** Sistemin boştayken uyumasını, istersen ekranın uyumasını da engeller (IOKit power assertion).
-- **Süre:** 15 dakikadan 8 saate kadar hazır süreler, özel süre ya da süresiz. Menü çubuğunda geri sayım; 15 dakika uzatma.
-- **Pil koruması:** Seçtiğin pil seviyesinin (%5–25) altında kendini kapatır.
-- **Kapak modu:** Kapak kapalıyken Mac uyanık kalır (`pmset disablesleep`). Pildeyken ayrı bir eşiğin altında kendini kapatır.
-- **Uzak erişim (VNC):** Sistemi uyanık tutar, ekranı karartır ve istersen oturumu kilitler. Mac, Ekran Paylaşımı ile bağlanmaya hazır olur.
-- **Oturum kilitlenmesin:** Ekran koruyucu ve otomatik kilit devreye girmez.
-- **Geçmiş:** Bugünün zaman çizelgesi ve son oturumlar; her birinin neden bittiği. Uygulama çökse de kaybolmaz.
-- **Global kısayol:** Varsayılan `⌃⌥⌘A`.
-- **Komut satırı ve URL şeması:** `pusu on 90`, `pusu off`, `pusu://on?minutes=60`.
-- **Türkçe ve İngilizce:** macOS dilini izler; istersen Ayarlar'dan seçebilirsin.
-- **Gizlilik:** Ağ bağlantısı kurmaz, analitik toplamaz. Her şey Mac'inde kalır.
+<p align="center">
+  <a href="https://github.com/bilalkan/pusu/releases/latest"><b>İndir</b></a>
+  &nbsp;·&nbsp;
+  <a href="#kurulum"><b>Homebrew</b></a>
+  &nbsp;·&nbsp;
+  <a href="README.md"><b>English</b></a>
+</p>
 
-macOS 13 Ventura veya üstü gerekir. Universal: Apple silicon ve Intel.
+<br>
+
+**Pusu**, Mac'ini uyanık tutan küçük ve yerel (native) bir menü çubuğu uygulaması. Bir saatliğine, pil azalana kadar, kapak kapalıyken ya da VNC ile bağlıyken. Anahtar deliğine tıkla, Mac uyanık kalsın.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/session-tr-dark.png">
+    <img alt="Oturum sekmesi" src="docs/screenshots/session-tr-light.png" width="49%">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/history-tr-dark.png">
+    <img alt="Geçmiş sekmesi" src="docs/screenshots/history-tr-light.png" width="49%">
+  </picture>
+</p>
+
+## Öne çıkanlar
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>⏱ İstediğin kadar</h3>
+      15 dakikadan 8 saate, özel süre ya da süresiz. Menü çubuğunda canlı geri sayım, tek tıkla 15 dakika uzatma.
+    </td>
+    <td width="50%" valign="top">
+      <h3>🔋 Pili düşünür</h3>
+      Seçtiğin pil seviyesinin altında kendini kapatır. Unutulan bir oturum laptopunu tüketmez.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>💻 Kapak kapalı, iş sürüyor</h3>
+      Kapak modu, kapak kapalıyken de Mac'in çalışmasını sağlar. İsteğe bağlı yardımcıyla parolayı her seferinde değil, bir kez girersin.
+    </td>
+    <td valign="top">
+      <h3>🖥 Uzaktan bağlanmaya hazır</h3>
+      Tek tıkla sistemi uyanık tutar, ekranı karartır ve oturumu kilitler. Ekran Paylaşımı / VNC için hazır.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>🕘 Geçmiş</h3>
+      Bugünün zaman çizelgesi ve son oturumlar; her birinin neden bittiği. Çökmelerde kaybolmaz.
+    </td>
+    <td valign="top">
+      <h3>⌨️ Kısayol, komut satırı ve URL</h3>
+      Her yerden <code>⌃⌥⌘A</code>, Terminal'den <code>pusu on 90</code>, Kestirmeler'den <code>pusu://on?minutes=60</code>.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>🌐 Türkçe ve İngilizce</h3>
+      macOS dilini izler; istersen Ayarlar'dan seçersin.
+    </td>
+    <td valign="top">
+      <h3>🔒 Gizliliğe saygılı</h3>
+      Ağ bağlantısı yok, analitik yok, hesap yok. Yerel Swift, neredeyse sıfır CPU.
+    </td>
+  </tr>
+</table>
 
 ## Kurulum
 
-### Homebrew
+**Homebrew**
 
 ```bash
 brew tap bilalkan/tap
@@ -37,53 +88,42 @@ brew trust bilalkan/tap     # Homebrew, üçüncü taraf tap'lere bir kez güven
 brew install --cask pusu
 ```
 
-Bu komut `pusu` komut satırı aracını da kurar.
+**İndirme:** [Son sürümden](https://github.com/bilalkan/pusu/releases/latest) `Pusu-<sürüm>.dmg` dosyasını indir ve Pusu'yu Uygulamalar klasörüne sürükle.
 
-### İndirme
+> [!NOTE]
+> Pusu henüz Apple tarafından onaylanmış (notarize) değil; bunun için ücretli geliştirici hesabı gerekiyor. Bu yüzden macOS, indirilen kopyanın ilk açılışını engeller. **Sistem Ayarları › Gizlilik ve Güvenlik**'te **Yine de Aç**'a tıkla ya da `xattr -dr com.apple.quarantine /Applications/Pusu.app` komutunu çalıştır. Homebrew bunu senin için yapar. Her sürüm `SHA256SUMS` ile gelir; istersen [kendin derleyebilirsin](#kaynaktan-derleme).
 
-[Son sürümden](https://github.com/bilalkan/pusu/releases/latest) `Pusu-<sürüm>.dmg` dosyasını indir ve Pusu'yu Uygulamalar klasörüne sürükle.
-
-**İlk açılış:** Pusu henüz Apple tarafından onaylanmış (notarize) değil; bunun için ücretli geliştirici hesabı gerekiyor. Bu yüzden macOS ilk seferde açmayı reddeder. İzin vermek için:
-
-1. Pusu'yu bir kez açmayı dene, ardından **Bitti**'ye tıkla.
-2. **Sistem Ayarları › Gizlilik ve Güvenlik**'i aç, aşağı kaydır ve Pusu'nun yanındaki **Yine de Aç**'a tıkla.
-
-Ya da Terminal'de:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Pusu.app
-```
-
-Homebrew ile kurduysan bu adım otomatik yapılır. Her sürümü `SHA256SUMS` ile doğrulayabilir ya da kendin derleyebilirsin (aşağıda).
-
-### Kaynaktan
-
-```bash
-git clone https://github.com/bilalkan/pusu.git
-cd pusu
-make test      # testleri çalıştır
-make install   # derle, /Applications'a kopyala ve `pusu` komutunu bağla
-```
-
-Xcode Command Line Tools (Swift 5.9 veya üstü) yeterlidir.
+macOS 13 Ventura veya üstü gerekir; Apple silicon ya da Intel.
 
 ## Kullanım
 
-Menü çubuğundaki anahtar deliği simgesine tıkla. Simge durumu gösterir: kapalı, uyanık, süreli (azalan halka), kapak modu ya da uzak erişim modu.
+Menü çubuğundaki anahtar deliğine tıkla. Simge durumu bir bakışta gösterir: kapalı, uyanık, süreli (azalan halka), kapak modu ya da uzak erişim.
 
-### Kapak modu ve yardımcı
+```bash
+pusu on 90          # 90 dakika uyanık kal (ayrıca: 2h, 1h30m, 1s30d)
+pusu on             # varsayılan süreyi kullan
+pusu off
+pusu lid on         # kapak kapalıyken çalışmaya devam et
+pusu vnc            # ekranı karart + kilitle, Ekran Paylaşımı'na hazır
+pusu status         # betikler için JSON
+```
+
+<details>
+<summary><b>Kapak modu ve yönetici yardımcısı</b></summary>
+
+<br>
 
 macOS'ta kapak kapalıyken uyanık kalmanın herkese açık bir API'si yok. Bu yüzden kapak modu `pmset -a disablesleep 1` ayarını kullanır ve bu ayar yönetici yetkisi ister.
 
 - **Yardımcı olmadan:** Pusu, kapak modunu her açıp kapattığında parola sorar.
 - **Yardımcıyla** (Ayarlar › Sistem › Yardımcıyı kur…): Parolayı bir kez girersin. Pusu, tek işi `disablesleep` ayarını değiştirip geri almak olan küçük bir root servisi kurar.
 
-Yardımcı hakkında:
+Yardımcı:
 
-- Yalnızca `admin` grubunun açabildiği bir Unix soketinden dört sabit komut kabul eder: `ping`, `status`, `lid-on`, `lid-off`. Başka girdi almaz, kabuk komutu çalıştırmaz.
-- Orijinal `SleepDisabled` değerini saklar. Kapak modu kapatıldığında, yardımcı kaldırıldığında ya da durdurulduğunda bu değeri geri yükler.
-- Dosyalar: `/Library/PrivilegedHelperTools/local.kan.pusu.helper`, `/Library/LaunchDaemons/local.kan.pusu.helper.plist`. Log: `/var/log/local.kan.pusu.helper.log`.
-- Kaldırmak için: Ayarlar › Sistem ya da `pusu uninstall-helper`.
+- yalnızca `admin` grubunun açabildiği bir Unix soketinden dört sabit komut (`ping`, `status`, `lid-on`, `lid-off`) kabul eder; başka girdi almaz, kabuk komutu çalıştırmaz;
+- orijinal `SleepDisabled` değerini saklar; kapak modu kapatıldığında, yardımcı kaldırıldığında ve durdurulduğunda geri yükler;
+- `/Library/PrivilegedHelperTools/local.kan.pusu.helper` ve `/Library/LaunchDaemons/local.kan.pusu.helper.plist` konumlarında durur, `/var/log/local.kan.pusu.helper.log` dosyasına log yazar;
+- Ayarlar › Sistem'den ya da `pusu uninstall-helper` ile kaldırılabilir.
 
 Uyku bir şekilde kapalı kalırsa şu komut her zaman geri alır:
 
@@ -91,13 +131,23 @@ Uyku bir şekilde kapalı kalırsa şu komut her zaman geri alır:
 sudo pmset -a disablesleep 0
 ```
 
-Kapak modu pildeyken daha fazla enerji harcar ve Mac ısınabilir. Kapak pil korumasını açık tut.
+Kapak modu pildeyken daha fazla enerji harcar ve Mac ısınabilir; kapak pil korumasını açık tut.
 
-### Uzak erişim (VNC)
+</details>
 
-**Sistem Ayarları › Genel › Paylaşma › Ekran Paylaşımı**'nı aç, ardından **Uzak erişim (VNC) › Uzaktan bağlanmaya hazırla**'yı seç. Pusu sistemi uyanık tutar, ekranı karartır ve istersen oturumu kilitler. Bağlan; işin bitince **Ekranı uyandır**'ı seç ya da `pusu wake` komutunu kullan.
+<details>
+<summary><b>Uzak erişim (VNC)</b></summary>
 
-### Komut satırı
+<br>
+
+**Sistem Ayarları › Genel › Paylaşma › Ekran Paylaşımı**'nı aç, ardından **Uzak erişim (VNC) › Uzaktan bağlanmaya hazırla**'yı seç (ya da `pusu vnc`). Pusu sistemi uyanık tutar, ekranı karartır ve istersen oturumu kilitler. Bağlan; döndüğünde **Ekranı uyandır**'ı seç (ya da `pusu wake`). Sen yokken ekran karanlık kalır; Pusu onu uyandırmaz.
+
+</details>
+
+<details>
+<summary><b>Tüm komutlar ve URL şeması</b></summary>
+
+<br>
 
 ```text
 pusu                     Menü çubuğu uygulamasını başlat
@@ -119,28 +169,28 @@ pusu version             Sürüm
 
 Süreyi Türkçe kısaltmalarla da yazabilirsin: `2s` (saat), `45d` (dakika), `1s30d`. Pusu çalışmıyorsa `pusu on` onu arka planda başlatır.
 
-### URL şeması
+URL'ler: `pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pusu://vnc`, `pusu://blackout`, `pusu://lock`, `pusu://wake`, `pusu://settings`. Kapak modu ve tanılama bilerek URL'den erişilemez.
 
-`pusu://on`, `pusu://on?minutes=60`, `pusu://off`, `pusu://toggle`, `pusu://vnc`, `pusu://blackout`, `pusu://lock`, `pusu://wake`, `pusu://settings`. Kestirmeler (Shortcuts) ve diğer otomasyonlar için kullanışlıdır.
+</details>
 
-## Kaldırma
+<details>
+<summary><b>Kaldırma</b></summary>
 
-Homebrew ile:
+<br>
 
 ```bash
 brew uninstall --cask pusu          # uygulamayı ve yardımcıyı kaldırır
 brew uninstall --zap --cask pusu    # ayarları ve geçmişi de siler
 ```
 
-Homebrew kullanmadıysan, bu deponun bir kopyasında:
+Homebrew kullanmadıysan bu deponun bir kopyasında `scripts/uninstall.sh` çalıştır. Uygulamayı, yardımcıyı (`SleepDisabled` geri alınır), giriş öğesini, ayarları ve geçmişi kaldırır.
 
-```bash
-scripts/uninstall.sh
-```
+</details>
 
-Bu script uygulamayı, yardımcıyı (`SleepDisabled` geri alınır), giriş öğesini, ayarları ve geçmişi kaldırır.
+<details>
+<summary><b>Pusu dosyaları nerede tutar?</b></summary>
 
-## Dosyalar
+<br>
 
 | Ne | Nerede |
 |---|---|
@@ -149,29 +199,36 @@ Bu script uygulamayı, yardımcıyı (`SleepDisabled` geri alınır), giriş ö�
 | Giriş öğesi | `~/Library/LaunchAgents/local.kan.pusu.login.plist` |
 | Yardımcı | `/Library/PrivilegedHelperTools/local.kan.pusu.helper` |
 
-## Geliştirme
+</details>
+
+## Kaynaktan derleme
 
 ```bash
+git clone https://github.com/bilalkan/pusu.git && cd pusu
 make test        # 200'den fazla kontrol; oturum durum makinesi sahte donanımla test edilir
-make debug       # build/Pusu.app içinde debug derlemesi
-make package     # dist/ içinde universal .zip ve .dmg
+make install     # derle, /Applications'a kopyala ve `pusu` komutunu bağla
 ```
+
+Yalnızca Xcode Command Line Tools (Swift 5.9+) yeterli.
+
+<details>
+<summary><b>Proje yapısı ve sürüm araçları</b></summary>
+
+<br>
 
 - `Sources/PusuCore`: Oturum durum makinesi, güç assertion'ları, pil, kapak, yardımcı protokolü, geçmiş, komut ayrıştırma, dil.
 - `Sources/Pusu`: Menü çubuğu uygulaması (AppKit + SwiftUI) ve `pusu` komutu.
 - `Sources/PusuHelper`: Root yardımcısı.
-- `Tests/PusuCoreTests`: Test koşucusu. XCTest gerektirmez, yalnızca Command Line Tools ile çalışır.
+- `Tests/PusuCoreTests`: Test koşucusu (XCTest gerektirmez, yalnızca Command Line Tools ile çalışır).
 
-Arayüz metinleri kodda `L("Türkçe", "English")` biçiminde yan yana yazılır. Böylece hiçbir metin çevrilmeden yayına çıkamaz.
+Arayüz metinleri kodda `L("Türkçe", "English")` biçiminde yan yana yazılır; hiçbir metin çevrilmeden yayına çıkamaz.
 
-Debug derlemesi, ekran kaydı izni olmadan Ayarlar'ın tüm sekmelerini iki dilde PNG olarak üretebilir:
+- `make package`, `dist/` içinde universal `.zip` ve `.dmg` üretir. Apple Developer ID'n varsa imzalama ve notarization için `PUSU_SIGN_IDENTITY` ve `PUSU_NOTARY_PROFILE` değişkenlerini ayarla.
+- `scripts/cask.sh`, mevcut sürüm için Homebrew cask dosyasını yazdırır.
+- `swift run Pusu --snapshot-ui build/snapshots` (debug derlemesi), Ayarlar'ın tüm sekmelerini iki dilde ve iki temada, ekran kaydı izni olmadan üretir.
 
-```bash
-swift run Pusu --snapshot-ui build/snapshots
-```
-
-Sürümler `scripts/package.sh` ile üretilir. Apple Developer ID'n varsa, imzalama ve notarization için `PUSU_SIGN_IDENTITY` ve `PUSU_NOTARY_PROFILE` değişkenlerini ayarla.
+</details>
 
 ## Lisans
 
-[GPL-3.0](LICENSE). Pusu'yu kullanabilir, inceleyebilir, değiştirebilir ve paylaşabilirsin. Pusu'dan türetip dağıttığın her şey de kaynak koduyla birlikte GPL altında yayınlanmalıdır.
+[GPL-3.0](LICENSE). Kullan, incele, değiştir, paylaş. Pusu üzerine kurup dağıttığın her şey de GPL altında açık kalmalı.

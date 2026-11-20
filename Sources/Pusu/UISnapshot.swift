@@ -21,37 +21,72 @@ enum UISnapshot {
         for language in [AppLanguage.turkish, .english] {
             Localization.force(language)
             let fixture = Fixture()
-            for tab in SettingsTab.allCases {
-                let ui = SettingsUIModel()
-                ui.isSnapshot = true
-                ui.tab = tab
-                ui.helperLoaded = true
-                ui.helperStatus = HelperStatus(ok: true, version: HelperProtocol.version, sleepDisabled: false)
-                ui.sleepDisabled = false
-                ui.lidSnapshot = LidSnapshot(isClosed: false, causesSleep: true)
-                ui.sharingState = .running
-                ui.notificationsAuthorized = true
-                ui.diagnostics = "Pusu \(CLI.version)\nmacOS: …\n\nSTATE\n  on: true\n  remaining: 1:24:10\n  lid mode: false\n…"
-                let view = SettingsView(
-                    settings: fixture.settings,
-                    session: fixture.session,
-                    history: fixture.history,
-                    ui: ui,
-                    actions: .noop
+            for dark in [false, true] {
+                let theme = dark ? "-dark" : ""
+                for tab in SettingsTab.allCases {
+                    let ui = SettingsUIModel()
+                    ui.isSnapshot = true
+                    ui.tab = tab
+                    ui.helperLoaded = true
+                    ui.helperStatus = HelperStatus(ok: true, version: HelperProtocol.version, sleepDisabled: false)
+                    ui.sleepDisabled = false
+                    ui.lidSnapshot = LidSnapshot(isClosed: false, causesSleep: true)
+                    ui.sharingState = .running
+                    ui.notificationsAuthorized = true
+                    ui.diagnostics = "Pusu \(CLI.version)\nmacOS: …\n\nSTATE\n  on: true\n  remaining: 1:24:10\n  lid mode: false\n…"
+                    let view = SettingsView(
+                        settings: fixture.settings,
+                        session: fixture.session,
+                        history: fixture.history,
+                        ui: ui,
+                        actions: .noop
+                    )
+                    let height: CGFloat
+                    switch tab {
+                    case .session: height = 762
+                    case .history: height = 762
+                    case .system, .settings: height = 788
+                    }
+                    render(
+                        view,
+                        size: NSSize(width: 720, height: height),
+                        dark: dark,
+                        title: L("Pusu Ayarları", "Pusu Settings"),
+                        prepare: fixture.freezeClock,
+                        to: outputDirectory.appendingPathComponent("settings-\(tab.rawValue)-\(language.rawValue)\(theme).png")
+                    )
+                }
+                render(
+                    AboutView {},
+                    size: NSSize(width: 520, height: 360),
+                    dark: dark,
+                    title: nil,
+                    to: outputDirectory.appendingPathComponent("about-\(language.rawValue)\(theme).png")
                 )
-                render(view, size: NSSize(width: 720, height: 788), to: outputDirectory
-                    .appendingPathComponent("settings-\(tab.rawValue)-\(language.rawValue).png"))
             }
-            render(AboutView {}, size: NSSize(width: 520, height: 360), to: outputDirectory
-                .appendingPathComponent("about-\(language.rawValue).png"))
             fixture.tearDown()
         }
         Localization.force(nil)
         print(outputDirectory.path)
     }
 
-    private static func render<V: View>(_ view: V, size: NSSize, to url: URL) {
+    /// Görünümü ekran dışı bir pencerede çizer; sonucu macOS penceresi gibi yuvarlatılmış
+    /// köşeli, gölgeli ve trafik ışıklı bir görsel olarak (saydam zeminde) kaydeder.
+    private static func render<V: View>(
+        _ view: V,
+        size: NSSize,
+        dark: Bool,
+        title: String?,
+        prepare: (() -> Void)? = nil,
+        to url: URL
+    ) {
+        let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        let previousAppearance = NSApp.appearance
+        NSApp.appearance = appearance
+        defer { NSApp.appearance = previousAppearance }
+
         let hosting = NSHostingView(rootView: view)
+        hosting.appearance = appearance
         hosting.frame = NSRect(origin: .zero, size: size)
         let window = NSWindow(
             contentRect: hosting.frame,
@@ -59,7 +94,7 @@ enum UISnapshot {
             backing: .buffered,
             defer: false
         )
-        window.appearance = NSAppearance(named: .aqua)
+        window.appearance = appearance
         window.contentView = hosting
         window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
         window.orderFrontRegardless()
@@ -68,13 +103,108 @@ enum UISnapshot {
             hosting.layoutSubtreeIfNeeded()
             RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         }
+        // Gerçek 1 sn'lik zamanlayıcı örnek geri sayımı bozmasın: çizimden hemen önce sabitle.
+        prepare?()
+        hosting.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        hosting.layoutSubtreeIfNeeded()
 
-        guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return }
-        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
-        if let data = bitmap.representation(using: .png, properties: [:]) {
-            try? data.write(to: url)
+        prepare?()
+        hosting.layoutSubtreeIfNeeded()
+        hosting.display()
+
+        // Pencere sunucusundan yakalama, vibrancy kullanan denetimleri (sekme çubuğu) de
+        // doğru çizer; uygulama kendi penceresini yakalarken ekran kaydı izni gerekmez.
+        let bitmap: NSBitmapImageRep
+        if let image = CGWindowListCreateImage(
+            .null,
+            .optionIncludingWindow,
+            CGWindowID(window.windowNumber),
+            [.boundsIgnoreFraming, .bestResolution]
+        ), image.width > 0 {
+            bitmap = NSBitmapImageRep(cgImage: image)
+        } else {
+            guard let cached = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return }
+            appearance?.performAsCurrentDrawingAppearance {
+                hosting.cacheDisplay(in: hosting.bounds, to: cached)
+            }
+            bitmap = cached
         }
         window.orderOut(nil)
+
+        let scale = CGFloat(bitmap.pixelsWide) / size.width
+        let margin: CGFloat = 36
+        let canvasSize = NSSize(width: size.width + margin * 2, height: size.height + margin * 2)
+        guard let canvas = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(canvasSize.width * scale),
+            pixelsHigh: Int(canvasSize.height * scale),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return }
+        canvas.size = canvasSize
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: canvas)
+        let frame = NSRect(x: margin, y: margin, width: size.width, height: size.height)
+        let shape = NSBezierPath(roundedRect: frame, xRadius: 12, yRadius: 12)
+
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(dark ? 0.55 : 0.22)
+        shadow.shadowBlurRadius = 22
+        shadow.shadowOffset = NSSize(width: 0, height: -8)
+        shadow.set()
+        NSColor.windowBackgroundColor.setFill()
+        shape.fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSGraphicsContext.saveGraphicsState()
+        shape.addClip()
+        bitmap.draw(in: frame)
+        NSGraphicsContext.restoreGraphicsState()
+
+        // Trafik ışıkları ve başlık (pencere başlık çubuğu saydam olduğu için içerik üstünde).
+        let lights: [NSColor] = [
+            NSColor(srgbRed: 1.00, green: 0.37, blue: 0.34, alpha: 1),
+            NSColor(srgbRed: 1.00, green: 0.74, blue: 0.18, alpha: 1),
+            NSColor(srgbRed: 0.16, green: 0.78, blue: 0.25, alpha: 1),
+        ]
+        for (index, color) in lights.enumerated() {
+            color.setFill()
+            NSBezierPath(ovalIn: NSRect(
+                x: frame.minX + 14 + CGFloat(index) * 20,
+                y: frame.maxY - 20,
+                width: 12,
+                height: 12
+            )).fill()
+        }
+        if let title {
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+                .foregroundColor: dark
+                    ? NSColor(white: 1, alpha: 0.55)
+                    : NSColor(white: 0, alpha: 0.5),
+            ]
+            let text = NSAttributedString(string: title, attributes: attributes)
+            let textSize = text.size()
+            text.draw(at: NSPoint(x: frame.midX - textSize.width / 2, y: frame.maxY - 21))
+        }
+
+        // İnce kenarlık
+        (dark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.12)).setStroke()
+        shape.lineWidth = 1
+        shape.stroke()
+        NSGraphicsContext.restoreGraphicsState()
+
+        if let data = canvas.representation(using: .png, properties: [:]) {
+            try? data.write(to: url)
+        }
     }
 
     private static func iconFromRepository() -> URL? {
@@ -103,23 +233,22 @@ enum UISnapshot {
                 activeURL: directory.appendingPathComponent("active-session.json")
             )
 
-            let calendar = Calendar.current
-            let today = calendar.startOfDay(for: Date())
-            let samples: [(start: Double, minutes: Double, reason: SessionStopReason, lid: Bool, remote: Bool)] = [
-                (8.5, 95, .timer, false, false),
-                (10.75, 40, .user, false, true),
-                (12.9, 130, .user, true, false),
+            // Örnek geçmiş: zaman çizelgesi her saatte dolu görünsün diye "şimdi"ye göre.
+            let now = Date()
+            let samples: [(hoursAgo: Double, minutes: Double, reason: SessionStopReason, lid: Bool, remote: Bool)] = [
+                (7.5, 95, .timer, false, false),
+                (5.0, 40, .user, false, true),
+                (3.2, 110, .user, true, false),
             ]
             for sample in samples {
-                let start = today.addingTimeInterval(sample.start * 3600)
-                guard start < Date() else { continue }
+                let start = now.addingTimeInterval(-sample.hoursAgo * 3600)
                 history.begin(duration: PusuDuration(minutes: Int(sample.minutes)), at: start)
                 if sample.lid { history.markLidUsed(at: start) }
                 if sample.remote { history.markRemoteUsed(at: start) }
                 history.end(
                     reason: sample.reason,
                     battery: BatteryStatus(percent: 80, isOnBattery: true, isCharging: false, isPresent: true),
-                    at: min(Date(), start.addingTimeInterval(sample.minutes * 60))
+                    at: start.addingTimeInterval(sample.minutes * 60)
                 )
             }
 
@@ -134,7 +263,13 @@ enum UISnapshot {
                 },
                 runtimeWriter: { _ in }
             )
+            history.begin(duration: .twoHours, at: now.addingTimeInterval(-(35 * 60 + 50)))
             session.start(.twoHours)
+            session.processTick(now: now.addingTimeInterval(35 * 60 + 50))
+        }
+
+        /// Geri sayımı "35 dk 50 sn geçmiş" durumuna sabitler (kalan 1:24:10).
+        func freezeClock() {
             session.processTick(now: Date().addingTimeInterval(35 * 60 + 50))
         }
 

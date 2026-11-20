@@ -493,8 +493,19 @@ private struct SessionProgressBar: View {
 
     var body: some View {
         let remaining = clock.remaining ?? total
-        ProgressView(value: min(1, max(0, (total - remaining) / total)))
-            .progressViewStyle(.linear)
+        let fraction = min(1, max(0, (total - remaining) / total))
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.10))
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(width: max(6, proxy.size.width * fraction))
+            }
+        }
+        .frame(height: 6)
+        .accessibilityElement()
+        .accessibilityLabel(L("Geçen süre", "Elapsed"))
+        .accessibilityValue(Text("\(Int(fraction * 100))%"))
     }
 }
 

@@ -9,3 +9,7 @@ dist/
 # Yerel, yayınlanmayan notlar ve kişisel ekran görüntüleri
 HANDOFF.md
 Resources/Icons/A/menubar/onizleme/gercek-*.png
+
+# Yerel güvenlik denetimi notları
+audit/
+.claude/
