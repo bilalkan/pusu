@@ -63,6 +63,8 @@ cask "pusu" do
   caveats <<~EOS
     Pusu is not notarized by Apple. The cask removes the quarantine flag so it opens normally.
     Lid mode needs administrator rights; install the optional helper from Settings › System.
+    If you use lid mode without the helper, turn it off in Pusu before uninstalling;
+    otherwise run `sudo pmset -a disablesleep 0` afterwards.
   EOS
 end
 CASK

@@ -67,7 +67,7 @@ public enum HelperProtocol {
     public static let logPath = "/var/log/local.kan.pusu.helper.log"
     /// Uygulamayla birlikte gelen yardımcının protokol sürümü. Yardımcı davranışı
     /// değiştiğinde artırılır; kurulu yardımcı farklıysa arayüz güncelleme önerir.
-    public static let version = "1.3"
+    public static let version = "1.4"
 
     /// İstemcinin bağlandığı soket. `PUSU_HELPER_SOCKET` yalnızca root olmayan
     /// süreçlerde (geliştirme/test) dikkate alınır; root yardımcı her zaman sabit yolu kullanır.
@@ -111,12 +111,15 @@ public enum HelperClient {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
+        // Yardımcı bağlantıyı kapatırsa SIGPIPE uygulamayı sonlandırmasın; write EPIPE döndürsün.
+        var noSigPipe: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
 
         // SO_RCVTIMEO'da {0,0} "sonsuz bekle" demektir; kesirli süreleri doğru böl, en az 100 ms.
         let bounded = max(0.1, timeout)
         var tv = timeval(
             tv_sec: Int(bounded.rounded(.down)),
-            tv_usec: Int32(((bounded - bounded.rounded(.down)) * 1_000_000).rounded())
+            tv_usec: Int32(min(999_999, ((bounded - bounded.rounded(.down)) * 1_000_000).rounded()))
         )
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
@@ -235,10 +238,15 @@ public enum HelperInstaller {
         guard FileManager.default.isExecutableFile(atPath: helperBinary.path) else {
             throw HelperError.installFailed(L("pusu-helper çalıştırılabilir dosyası bulunamadı.", "The pusu-helper executable was not found."))
         }
-        guard let expected = (expectedSHA256 ?? sha256(of: helperBinary))?.lowercased(),
+        // Özet yalnızca derlemede sabitlenen değerden gelir; yoksa kurulum reddedilir
+        // (dosyanın kendisinden hesaplamak doğrulamayı anlamsız kılardı).
+        guard let expected = expectedSHA256?.lowercased(),
               expected.count == 64, expected.allSatisfy({ $0.isHexDigit })
         else {
-            throw HelperError.installFailed(L("Yardımcının özeti okunamadı.", "Could not read the helper checksum."))
+            throw HelperError.installFailed(L(
+                "Uygulama paketinde yardımcı özeti yok. Pusu'yu scripts/build.sh ile derleyin ya da yeniden indirin.",
+                "The app bundle has no helper checksum. Build Pusu with scripts/build.sh or download it again."
+            ))
         }
 
         let plist: [String: Any] = [
@@ -323,7 +331,14 @@ public final class LidController: LidControlling {
         self.settings = settings
     }
 
+    /// Kapak modunu açmak için yardımcı yanıt vermeli ve bu sürümle aynı protokolü konuşmalı.
+    /// Eski bir yardımcı kullanılmaz; arayüz güncelleme önerir.
     public var helperAvailable: Bool {
+        HelperProtocol.isCurrent(HelperClient.ping())
+    }
+
+    /// Kapatmak (geri yüklemek) için sürümü ne olursa olsun yanıt veren yardımcı yeterlidir.
+    private var helperResponding: Bool {
         HelperClient.ping() != nil
     }
 
@@ -371,7 +386,15 @@ public final class LidController: LidControlling {
                 return
             }
 
-            if sleepDisabled() == true { return }
+            if sleepDisabled() == true {
+                // Uyku zaten başka bir nedenle kapalı: sahipliği "önceden 1" olarak kaydet ki
+                // kapatırken parola sormadan bu değeri koruyalım.
+                if !settings.fallbackSleepDisabledActive {
+                    settings.fallbackSleepDisabledOriginal = true
+                    settings.fallbackSleepDisabledActive = true
+                }
+                return
+            }
             guard allowPrompt else { throw HelperError.adminCancelled }
             if !settings.fallbackSleepDisabledActive {
                 settings.fallbackSleepDisabledOriginal = sleepDisabled() ?? false
@@ -388,7 +411,7 @@ public final class LidController: LidControlling {
                 throw HelperError.commandFailed(L("pmset SleepDisabled ayarlanamadı.", "pmset could not set SleepDisabled."))
             }
         } else {
-            if helperAvailable || helperRespondsAfterRetry() {
+            if helperResponding || helperRespondsAfterRetry() {
                 guard let status = HelperClient.send(.lidOff, timeout: 4), status.ok else {
                     throw HelperError.commandFailed(L("Kapak modu kapatılamadı.", "Could not turn off lid mode."))
                 }
@@ -403,12 +426,22 @@ public final class LidController: LidControlling {
                 }
                 return
             }
-            guard allowPrompt else { throw HelperError.adminCancelled }
             let original = settings.fallbackSleepDisabledOriginal ?? false
+            // Zaten orijinal değerdeyse (ör. uyku Pusu'dan önce de kapalıydı) parola sorma.
+            if sleepDisabled() == original {
+                settings.fallbackSleepDisabledActive = false
+                settings.fallbackSleepDisabledOriginal = nil
+                return
+            }
+            guard allowPrompt else { throw HelperError.adminCancelled }
             let result = Shell.runAsAdmin(command: "/usr/bin/pmset -a disablesleep \(original ? 1 : 0)")
             guard result.succeeded else {
                 if result.wasCancelled { throw HelperError.adminCancelled }
                 throw HelperError.commandFailed(result.failureDescription)
+            }
+            // Kaydı yalnızca geri yükleme doğrulanınca sil.
+            guard sleepDisabled() == original else {
+                throw HelperError.commandFailed(L("SleepDisabled geri alınamadı.", "Could not restore SleepDisabled."))
             }
             settings.fallbackSleepDisabledActive = false
             settings.fallbackSleepDisabledOriginal = nil

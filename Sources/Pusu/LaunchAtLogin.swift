@@ -30,7 +30,21 @@ enum LaunchAtLogin {
         )
     }
 
+    enum LaunchAtLoginError: LocalizedError {
+        case temporaryLocation
+
+        var errorDescription: String? {
+            L(
+                "Pusu geçici bir konumdan (disk görüntüsü ya da İndirilenler) çalışıyor. Girişte başlatmak için önce Pusu'yu Uygulamalar klasörüne taşıyın.",
+                "Pusu is running from a temporary location (a disk image or Downloads). Move Pusu to the Applications folder first to open it at login."
+            )
+        }
+    }
+
     static func setEnabled(_ enabled: Bool) throws {
+        if enabled, !bundleIsInStableLocation {
+            throw LaunchAtLoginError.temporaryLocation
+        }
         if enabled {
             let directory = plistURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

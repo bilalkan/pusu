@@ -117,11 +117,15 @@ public enum CommandParser {
         else { return nil }
         let host = (components.host ?? "").lowercased()
         guard urlAllowedCommands.contains(host) else { return nil }
-        var minutes = components.queryItems?
-            .first(where: { $0.name == "minutes" })?
-            .value
-            .flatMap(parseDuration)
-        if let value = minutes, value > maxURLMinutes { minutes = maxURLMinutes }
+        var minutes: Int?
+        if let raw = components.queryItems?.first(where: { $0.name == "minutes" })?.value {
+            // Açıkça verilen ama geçersiz bir süre (0, negatif, metin, çok büyük) komutu
+            // geçersiz kılar; sessizce "süresiz" olmasın.
+            guard let parsed = parseDuration(raw) else { return nil }
+            minutes = min(parsed, maxURLMinutes)
+        }
+        // Süre verilmemişse uygulama varsayılan süreyi kullanır ve 8 saatle sınırlar
+        // (bkz. `CommandSource.url`).
         return PusuCommand(wireName: host, minutes: minutes)
     }
 

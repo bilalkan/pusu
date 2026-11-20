@@ -288,6 +288,8 @@ runChecks("Security policy") { runSecurityPolicyChecks() }
 // MARK: - SessionController
 
 runChecks("SessionController") { runSessionControllerChecks() }
+runChecks("External commands") { runExternalCommandChecks() }
+runChecks("URL strictness") { runURLStrictnessChecks() }
 
 // MARK: - Summary
 

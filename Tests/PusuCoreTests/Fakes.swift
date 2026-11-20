@@ -39,6 +39,8 @@ final class FakeLid: LidControlling {
     var usesFallback = false
     var sleepDisabledValue = false
     var failTurningOff = false
+    /// Kapatınca dönülecek değer (kullanıcının Pusu'dan önceki SleepDisabled'ı).
+    var restoreValue = false
     private(set) var setCalls: [(enabled: Bool, allowPrompt: Bool)] = []
 
     func helperStatus() -> HelperStatus? {
@@ -60,7 +62,7 @@ final class FakeLid: LidControlling {
         if !enabled, failTurningOff {
             throw HelperError.adminCancelled
         }
-        sleepDisabledValue = enabled
+        sleepDisabledValue = enabled ? true : restoreValue
     }
 }
 

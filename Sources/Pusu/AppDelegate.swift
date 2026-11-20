@@ -17,6 +17,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // Komut dinleyicisi en başta kaydedilir: `pusu` CLI, uygulama runtime.json'a PID'ini
+        // yazınca komut gönderir; o anda dinleyici hazır olmalı.
+        commandObserver = DistributedNotificationCenter.default().addObserver(
+            forName: .pusuCommand,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            self?.handleDistributed(note)
+        }
         installMainMenu()
         loadAppIcon()
 
@@ -81,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     NSLog("Pusu login item error: \(error.localizedDescription)")
                     DispatchQueue.main.async {
                         self.settings.launchAtLogin = LaunchAtLogin.isEnabled()
+                        self.showError(title: L("Girişte başlat", "Open at login"), message: error.localizedDescription)
                     }
                 }
             }
@@ -116,13 +126,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        commandObserver = DistributedNotificationCenter.default().addObserver(
-            forName: .pusuCommand,
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            self?.handleDistributed(note)
-        }
 
         NSAppleEventManager.shared().setEventHandler(
             self,
@@ -135,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self else { return }
             if let command = self.pendingCommand {
-                self.handle(command: command, external: true)
+                self.handle(command: command, source: .external)
                 self.pendingCommand = nil
             } else if !UserDefaults.standard.bool(forKey: "pusu.didShowIntro") {
                 UserDefaults.standard.set(true, forKey: "pusu.didShowIntro")
@@ -244,12 +247,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    private func setLid(_ enabled: Bool) {
-        if enabled, !session.lid.helperAvailable, !session.lidMode {
+    private func setLid(_ enabled: Bool, allowPrompt: Bool = true) {
+        if enabled, allowPrompt, !session.lid.helperAvailable, !session.lidMode {
             guard confirmLidMode() else { return }
         }
 
-        session.setLidModeAsync(enabled) { [weak self] result in
+        session.setLidModeAsync(enabled, allowPrompt: allowPrompt) { [weak self] result in
             guard let self else { return }
             if case .failure(let error) = result, !self.isUserCancelled(error) {
                 self.showError(title: L("Kapak modu", "Lid mode"), message: error.localizedDescription)
@@ -635,20 +638,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let command = PusuCommand(wireName: raw, minutes: minutes),
               CommandParser.isAllowedFromDistributedNotification(command)
         else { return }
-        handle(command: command, external: true)
+        handle(command: command, source: .external)
     }
 
-    /// - Parameter external: Komut başka bir süreçten (CLI/dağıtık bildirim) geldi. Bu durumda
-    ///   yönetici parolası penceresi asla açılmaz; yoksa kötü niyetli bir süreç Pusu adına
-    ///   inandırıcı bir parola isteği tetikleyebilir.
-    private func handle(command: PusuCommand, external: Bool = false) {
+    /// Komutun nereden geldiği.
+    enum CommandSource {
+        /// Menü, kısayol, Ayarlar: kullanıcı doğrudan istedi.
+        case user
+        /// `pusu` komut satırı, başka bir uygulama, açılış argümanı.
+        case external
+        /// `pusu://` bağlantısı (bir web sayfası da açabilir).
+        case url
+
+        /// Dışarıdan gelen komutlar asla yönetici parolası penceresi açmaz; yoksa kötü niyetli
+        /// bir süreç ya da sayfa Pusu adına inandırıcı bir parola isteği tetikleyebilir.
+        var mayPromptForAdmin: Bool { self == .user }
+
+        /// URL ile başlatılan oturumların üst sınırı.
+        var maxDuration: TimeInterval? {
+            self == .url ? TimeInterval(CommandParser.maxURLMinutes * 60) : nil
+        }
+    }
+
+    private func handle(command: PusuCommand, source: CommandSource = .user) {
         switch command {
         case .toggle:
-            session.toggle()
+            session.toggle(allowLidPrompt: source.mayPromptForAdmin, maxDuration: source.maxDuration)
         case .on(let minutes):
-            session.start(minutes.map { PusuDuration(minutes: $0) } ?? settings.defaultDuration)
+            let requested = minutes.map { PusuDuration(minutes: $0) } ?? settings.defaultDuration
+            session.start(SessionController.capped(requested, to: source.maxDuration))
         case .off:
-            session.stop()
+            session.stop(allowLidPrompt: source.mayPromptForAdmin)
         case .blackout:
             session.enterRemoteMode(lock: false)
         case .vnc:
@@ -664,7 +684,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .lid(let on):
             let target = on ?? !session.lidMode
             guard target != session.lidMode else { return }
-            if external, !session.lid.helperAvailable {
+            if !source.mayPromptForAdmin, !session.lid.helperAvailable {
                 notify(
                     L("Kapak modu", "Lid mode"),
                     L(
@@ -674,7 +694,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 return
             }
-            setLid(target)
+            setLid(target, allowPrompt: source.mayPromptForAdmin)
         }
     }
 
@@ -683,6 +703,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let url = URL(string: string),
               let command = CommandParser.parse(url: url)
         else { return }
-        handle(command: command)
+        handle(command: command, source: .url)
     }
 }

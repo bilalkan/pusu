@@ -278,12 +278,23 @@ public final class SessionController: NSObject, ObservableObject {
         onEvent?(.stopped(reason))
     }
 
-    public func toggle() {
+    /// - Parameters:
+    ///   - allowLidPrompt: Kapatırken kapak modu için yönetici parolası sorulabilir mi?
+    ///     Dışarıdan (CLI, URL, başka uygulama) gelen komutlarda `false` olmalıdır.
+    ///   - maxDuration: Açarken varsayılan süreye uygulanacak üst sınır (URL'ler için).
+    public func toggle(allowLidPrompt: Bool = true, maxDuration: TimeInterval? = nil) {
         if isOn {
-            stop(reason: .user)
+            stop(reason: .user, allowLidPrompt: allowLidPrompt)
         } else {
-            start(settings.defaultDuration)
+            start(SessionController.capped(settings.defaultDuration, to: maxDuration))
         }
+    }
+
+    /// Süreyi (süresiz dahil) verilen üst sınıra indirir.
+    public static func capped(_ duration: PusuDuration, to limit: TimeInterval?) -> PusuDuration {
+        guard let limit else { return duration }
+        guard let seconds = duration.seconds else { return PusuDuration(seconds: limit) }
+        return PusuDuration(seconds: min(seconds, limit))
     }
 
     /// Aktif oturumun bitişini öne çeker; süresiz oturumu süreli hale getirir.
@@ -306,7 +317,11 @@ public final class SessionController: NSObject, ObservableObject {
     }
 
     /// Kapak modunu yönetici diyaloğunu ana thread'de bloklamadan açar/kapatır.
-    public func setLidModeAsync(_ enabled: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+    public func setLidModeAsync(
+        _ enabled: Bool,
+        allowPrompt: Bool = true,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
         if enabled, BatteryPolicy.shouldStop(
             battery: battery,
             cutoffEnabled: settings.batteryCutoffEnabled,
@@ -318,10 +333,12 @@ public final class SessionController: NSObject, ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
-                try self.lid.setEnabled(enabled, allowPrompt: true)
+                try self.lid.setEnabled(enabled, allowPrompt: allowPrompt)
                 let sleepDisabled = self.lid.sleepDisabled() == true
                 DispatchQueue.main.async {
-                    guard sleepDisabled == enabled else {
+                    // Açarken SleepDisabled 1 olmalı. Kapatırken ise kullanıcının orijinal
+                    // değeri 1 olabilir; geri yükleme başarılıysa bunu hata saymayız.
+                    guard !enabled || sleepDisabled else {
                         completion(.failure(HelperError.commandFailed(L("SleepDisabled doğrulanamadı.", "Could not verify SleepDisabled."))))
                         return
                     }
@@ -356,7 +373,7 @@ public final class SessionController: NSObject, ObservableObject {
                         }
                     } else {
                         self.lidMode = false
-                        self.sleepDisabledActive = false
+                        self.sleepDisabledActive = sleepDisabled
                         self.lastError = nil
                         self.writeRuntime()
                         self.onEvent?(.lidChanged(false))

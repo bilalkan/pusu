@@ -77,7 +77,11 @@ private func handle(command: String) -> HelperStatus {
     case .lidOn:
         if readOriginal() == nil {
             let original = currentSleepDisabled() ?? false
-            _ = writeOriginal(original)
+            // Orijinal değer kaydedilemezse ayarı değiştirmeyiz: aksi hâlde geri yükleyecek
+            // hiçbir kayıt kalmaz.
+            guard writeOriginal(original) else {
+                return status(ok: false, error: "state write failed")
+            }
         }
         guard setSleepDisabled(true) else {
             return status(ok: false, error: "pmset disablesleep 1 failed")
@@ -96,7 +100,7 @@ private func handle(command: String) -> HelperStatus {
 
 private func handleClient(_ client: Int32) {
     // Tek iş parçacıklı sunucu: yavaş ya da sessiz bir istemci diğerlerini kilitlemesin.
-    var timeout = timeval(tv_sec: 2, tv_usec: 0)
+    var timeout = timeval(tv_sec: 0, tv_usec: 500_000)
     setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
     setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
     var noSigPipe: Int32 = 1
@@ -108,12 +112,9 @@ private func handleClient(_ client: Int32) {
         log("getpeereid failed")
         return
     }
-    // Soket 0660 root:admin; buna ek olarak yalnızca root ve o an konsolda (ekran başında)
-    // oturum açmış kullanıcı kabul edilir. Diğer admin hesaplarının süreçleri reddedilir.
-    guard uid == 0 || uid == consoleUserID() else {
-        log("rejected peer uid=\(uid) gid=\(gid)")
-        return
-    }
+    // Yetki sınırı soketin 0660 root:admin izinleridir: yalnızca admin grubu bağlanabilir
+    // (ve admin zaten sudo kullanabilir). Konsol kullanıcısı kontrolü hızlı kullanıcı
+    // geçişinde meşru sahibi dışarıda bıraktığı için kullanılmaz.
 
     // Komutlar kısa sabit kelimelerdir; 256 bayttan uzun girdiyi okumayız.
     var buffer = [UInt8](repeating: 0, count: 256)
@@ -127,7 +128,8 @@ private func handleClient(_ client: Int32) {
         .trimmingCharacters(in: .whitespacesAndNewlines)
     let result = handle(command: command)
     if command == HelperCommand.lidOn.rawValue || command == HelperCommand.lidOff.rawValue {
-        log("\(command) by uid=\(uid) -> ok=\(result.ok) sleepDisabled=\(result.sleepDisabled)")
+        log("\(command) by uid=\(uid) gid=\(gid) -> ok=\(result.ok) sleepDisabled=\(result.sleepDisabled)")
+        trimLogIfNeeded()
     }
 
     guard var data = try? JSONEncoder().encode(result) else { return }
@@ -135,13 +137,6 @@ private func handleClient(_ client: Int32) {
     data.withUnsafeBytes { bytes in
         _ = write(client, bytes.baseAddress, bytes.count)
     }
-}
-
-/// Konsol (ekran başı) kullanıcısının uid'i; giriş ekranındaysa root.
-private func consoleUserID() -> uid_t {
-    var info = stat()
-    guard stat("/dev/console", &info) == 0 else { return 0 }
-    return info.st_uid
 }
 
 /// Log dosyası sınırsız büyümesin: 512 KB'ı aşarsa baştan başlat.
@@ -164,6 +159,8 @@ private func serve() -> Never {
     signal(SIGPIPE, SIG_IGN)
     umask(0o007)
     trimLogIfNeeded()
+    // Log yalnızca root tarafından okunabilsin.
+    chmod(HelperProtocol.logPath, 0o600)
 
     // Bağlantılar ve SIGTERM aynı seri kuyrukta işlenir: kapanış, yarım kalmış bir
     // lid-on komutuyla yarışamaz.
@@ -175,9 +172,13 @@ private func serve() -> Never {
     let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: queue)
     termination.setEventHandler {
         if let original = readOriginal() {
-            _ = setSleepDisabled(original)
-            removeOriginal()
-            log("SIGTERM: SleepDisabled restored to \(original ? 1 : 0)")
+            if setSleepDisabled(original) {
+                removeOriginal()
+                log("SIGTERM: SleepDisabled restored to \(original ? 1 : 0)")
+            } else {
+                // Kaydı koru: kaldırma betikleri ya da bir sonraki başlatma geri yükleyebilsin.
+                log("SIGTERM: SleepDisabled restore failed; state kept")
+            }
         }
         exit(0)
     }

@@ -242,3 +242,66 @@ func runSessionControllerChecks() {
         h.tearDown()
     }
 }
+
+/// DeepSeek incelemesinin regresyon testleri: dış komutlar parola istemez, URL süreleri sınırlı.
+func runExternalCommandChecks() {
+    // Süre üst sınırı
+    let eight: TimeInterval = 8 * 3600
+    expectEqual(SessionController.capped(.indefinite, to: eight), PusuDuration(seconds: eight), "cap: süresiz 8 saate iner")
+    expectEqual(SessionController.capped(PusuDuration(minutes: 600), to: eight), PusuDuration(seconds: eight), "cap: 10 saat 8 saate iner")
+    expectEqual(SessionController.capped(.oneHour, to: eight), .oneHour, "cap: 1 saat aynen")
+    expectEqual(SessionController.capped(.indefinite, to: nil), .indefinite, "cap: sınırsız kaynak aynen")
+
+    // Dışarıdan toggle/stop: kapak modu kapatılırken parola istenmez
+    do {
+        let h = SessionHarness(battery: battery(90, onBattery: false))
+        let c = h.controller!
+        var done = false
+        c.setLidModeAsync(true, allowPrompt: false) { _ in done = true }
+        h.spin { done }
+        expectEqual(h.lid.setCalls.last?.allowPrompt, false, "external: lid açma parola istemez")
+        c.toggle(allowLidPrompt: false)
+        expect(!c.isOn, "external: toggle kapattı")
+        expectEqual(h.lid.setCalls.last?.enabled, false, "external: kapak kapatıldı")
+        expectEqual(h.lid.setCalls.last?.allowPrompt, false, "external: kapatırken parola istemez")
+        h.tearDown()
+    }
+
+    // URL toggle süresiz varsayılanı 8 saatle sınırlar
+    do {
+        let h = SessionHarness(battery: battery(90, onBattery: false))
+        let c = h.controller!
+        c.toggle(allowLidPrompt: false, maxDuration: eight)
+        expectEqual(c.duration?.seconds, eight, "url toggle: süresiz yerine 8 saat")
+        h.tearDown()
+    }
+
+    // Orijinal SleepDisabled 1 ise kapak modunu kapatmak hata sayılmaz
+    do {
+        let h = SessionHarness(battery: battery(90, onBattery: false))
+        let c = h.controller!
+        h.lid.restoreValue = true
+        var opened = false
+        c.setLidModeAsync(true) { _ in opened = true }
+        h.spin { opened }
+        var result: Result<Void, Error>?
+        c.setLidModeAsync(false) { result = $0 }
+        h.spin { result != nil }
+        if case .success = result {} else { expect(false, "original 1: kapatma başarılı olmalı") }
+        expect(!c.lidMode, "original 1: kapak modu kapalı görünür")
+        expect(c.sleepDisabledActive, "original 1: gerçek değer (1) gösterilir")
+        h.tearDown()
+    }
+}
+
+func runURLStrictnessChecks() {
+    func url(_ string: String) -> PusuCommand? {
+        URL(string: string).flatMap(CommandParser.parse(url:))
+    }
+    expectNil(url("pusu://on?minutes=0"), "url: sıfır süre reddedilir")
+    expectNil(url("pusu://on?minutes=-5"), "url: negatif süre reddedilir")
+    expectNil(url("pusu://on?minutes=abc"), "url: metin süre reddedilir")
+    expectNil(url("pusu://on?minutes=999999999999"), "url: devasa süre reddedilir")
+    expectNil(url("pusu://on?minutes="), "url: boş süre reddedilir")
+    expectEqual(url("pusu://on"), .on(minutes: nil), "url: süresiz istek (uygulama 8 saatle sınırlar)")
+}

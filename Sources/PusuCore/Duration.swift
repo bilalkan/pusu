@@ -5,7 +5,7 @@ public struct PusuDuration: Codable, Hashable, Identifiable {
     public let seconds: TimeInterval?
 
     public var id: String {
-        if let seconds { return "s-\(Int(seconds))" }
+        if let seconds { return "s-\(safeInt(seconds))" }
         return "indefinite"
     }
 

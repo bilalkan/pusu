@@ -59,6 +59,7 @@ enum CLI {
         let command = CommandParser.parse(arguments)
 
         if let command, appIsRunning() {
+            waitUntilAppIsReady()
             post(command)
             return true
         }
@@ -101,6 +102,24 @@ enum CLI {
     }
 
     // MARK: - Private
+
+    /// Uygulama yeni açılıyorsa dağıtık bildirimi dinlemeye başlamadan gönderilen komut
+    /// kaybolur. Uygulama hazır olduğunda runtime.json'a kendi PID'ini yazar; onu bekle.
+    private static func waitUntilAppIsReady(timeout: TimeInterval = 3) {
+        let me = getpid()
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            .first(where: { $0.processIdentifier != me && !$0.isTerminated })
+        else { return }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if RuntimeStateStore.read()?.pid == app.processIdentifier {
+                // Gözlemci, durum yazıldıktan sonra aynı açılış adımında kaydedilir.
+                Thread.sleep(forTimeInterval: 0.2)
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
 
     private static var launchedFromTerminal: Bool {
         isatty(STDIN_FILENO) != 0 || isatty(STDOUT_FILENO) != 0

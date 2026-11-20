@@ -1,7 +1,10 @@
 #!/bin/bash
 # Pusu'yu, yardımcısını, giriş öğesini ve verilerini kaldırır.
-# Yardımcı kuruluysa SleepDisabled'ı eski değerine döndürmek için yönetici parolası ister.
+# Gerekirse SleepDisabled'ı Pusu'dan önceki değerine döndürmek için yönetici parolası ister.
 set -euo pipefail
+
+LABEL=local.kan.pusu.helper
+STATE="/var/db/$LABEL.state"
 
 if pgrep -x Pusu >/dev/null 2>&1; then
     osascript -e 'tell application id "local.kan.pusu" to quit' >/dev/null 2>&1 || true
@@ -9,20 +12,40 @@ if pgrep -x Pusu >/dev/null 2>&1; then
     pkill -x Pusu 2>/dev/null || true
 fi
 
-LABEL=local.kan.pusu.helper
-if [ -f "/Library/LaunchDaemons/$LABEL.plist" ] || [ -f "/Library/PrivilegedHelperTools/$LABEL" ]; then
-    ROOT_SCRIPT="$(mktemp -t pusu-uninstall)"
-    trap 'rm -f "$ROOT_SCRIPT"' EXIT
-    cat > "$ROOT_SCRIPT" <<ROOT
-/bin/launchctl bootout system/$LABEL >/dev/null 2>&1 || true
-if [ -f /var/db/$LABEL.state ]; then
-    ORIGINAL=\$(/bin/cat /var/db/$LABEL.state)
-    case "\$ORIGINAL" in 0|1) /usr/bin/pmset -a disablesleep "\$ORIGINAL" || true ;; esac
+# Yardımcısız kapak modu: Pusu'dan önceki değer kullanıcının ayarlarında saklanır.
+# Ayarlar silinmeden önce okunur ve yardımcı kaydına göre önceliklidir.
+RESTORE=""
+if [ "$(defaults read local.kan.pusu pusu.fallbackSleepDisabledActive 2>/dev/null || echo 0)" = "1" ]; then
+    case "$(defaults read local.kan.pusu pusu.fallbackSleepDisabledOriginal 2>/dev/null || echo 0)" in
+        1) RESTORE=1 ;;
+        *) RESTORE=0 ;;
+    esac
 fi
-/bin/rm -f /var/db/$LABEL.state /Library/LaunchDaemons/$LABEL.plist /Library/PrivilegedHelperTools/$LABEL /var/run/$LABEL.sock /var/log/$LABEL.log
-ROOT
-    osascript -e "do shell script \"/bin/sh '$ROOT_SCRIPT'\" with administrator privileges" >/dev/null \
-        || echo "Uyarı: yardımcı kaldırılamadı (yönetici izni verilmedi)."
+
+NEEDS_ROOT=0
+if [ -n "$RESTORE" ] || [ -e "$STATE" ] || [ -e "/Library/LaunchDaemons/$LABEL.plist" ] || [ -e "/Library/PrivilegedHelperTools/$LABEL" ]; then
+    NEEDS_ROOT=1
+fi
+
+if [ "$NEEDS_ROOT" = "1" ]; then
+    # Betik diske yazılmaz; osascript'e argüman olarak verilir (değiştirilemez).
+    ROOT_SCRIPT="set -u
+/bin/launchctl bootout system/$LABEL >/dev/null 2>&1 || true
+RESTORE='$RESTORE'
+if [ -z \"\$RESTORE\" ] && [ -f $STATE ]; then
+    RESTORE=\$(/bin/cat $STATE)
+fi
+case \"\$RESTORE\" in 0|1) /usr/bin/pmset -a disablesleep \"\$RESTORE\" ;; esac
+/bin/rm -f $STATE /Library/LaunchDaemons/$LABEL.plist /Library/PrivilegedHelperTools/$LABEL /var/run/$LABEL.sock /var/log/$LABEL.log"
+    if ! osascript \
+        -e 'on run argv' \
+        -e 'do shell script (item 1 of argv) with administrator privileges' \
+        -e 'end run' \
+        "$ROOT_SCRIPT" >/dev/null; then
+        echo "Uyarı: yönetici izni verilmedi; yardımcı kaldırılmadı ve SleepDisabled değişmedi."
+        echo "Gerekirse elle: sudo pmset -a disablesleep 0"
+        exit 1
+    fi
 fi
 
 launchctl bootout "gui/$(id -u)/local.kan.pusu.login" >/dev/null 2>&1 || true
