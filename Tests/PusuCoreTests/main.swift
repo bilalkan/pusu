@@ -298,6 +298,10 @@ runChecks("External commands") { runExternalCommandChecks() }
 runChecks("URL strictness") { runURLStrictnessChecks() }
 runChecks("App presence") { runAppPresenceChecks() }
 runChecks("Review regressions") { runReviewRegressionChecks() }
+runChecks("Event log") { runEventLogChecks() }
+runChecks("Remote mode") { runRemoteModeChecks() }
+runChecks("Tern watcher") { runTernWatcherChecks() }
+runChecks("Command delivery") { runCommandDeliveryChecks() }
 
 // MARK: - Summary
 

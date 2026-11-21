@@ -65,7 +65,7 @@
     </td>
     <td valign="top">
       <h3>🖥 Uzaktan bağlanmaya hazır</h3>
-      Tek tıkla sistemi uyanık tutar, ekranı karartır ve oturumu kilitler. Ekran Paylaşımı / VNC için hazır.
+      Tek tıkla oturumu kilitler ve ekranı kapatır. Ekran Paylaşımı ya da Tern bağlanınca ekran karanlık uyanır; kapak kapalıyken sanal ekran devreye girer.
     </td>
   </tr>
   <tr>
@@ -116,7 +116,8 @@ pusu on 90          # 90 dakika uyanık kal (ayrıca: 2h, 1h30m, 1s30d)
 pusu on             # varsayılan süreyi kullan
 pusu off
 pusu lid on         # kapak kapalıyken çalışmaya devam et
-pusu vnc            # ekranı karart + kilitle, Ekran Paylaşımı'na hazır
+pusu vnc            # kilitle + ekranı kapat, uzaktan bağlanmaya hazır
+pusu log            # son olaylar
 pusu status         # betikler için JSON
 ```
 
@@ -153,7 +154,15 @@ Kapak modu pildeyken daha fazla enerji harcar ve Mac ısınabilir; kapak pil kor
 
 <br>
 
-**Sistem Ayarları › Genel › Paylaşma › Ekran Paylaşımı**'nı aç, ardından **Uzak erişim (VNC) › Uzaktan bağlanmaya hazırla**'yı seç (ya da `pusu vnc`). Pusu sistemi uyanık tutar, ekranı karartır ve istersen oturumu kilitler. Bağlan; döndüğünde **Ekranı uyandır**'ı seç (ya da `pusu wake`). Sen yokken ekran karanlık kalır; Pusu onu uyandırmaz.
+**Sistem Ayarları › Genel › Paylaşma › Ekran Paylaşımı**'nı aç (ya da Tern kullan), ardından **Uzak erişim (VNC) › Uzaktan bağlanmaya hazırla**'yı seç (ya da `pusu vnc`).
+
+- **Kimse bağlı değilken:** Oturum kilitlenir, ekran uyur (M2 MacBook Air'de yaklaşık 0,7 W).
+- **Ekran Paylaşımı ile bağlanınca:** Ekranı macOS kendisi uyandırır.
+- **Tern ile bağlanınca:** Ekran uyanır ama Mac'in paneli ve klavye ışığı karanlık kalır; sen kilit ekranını normal görürsün (yaklaşık 2 W). 30 saniye kimse ekrana bakmazsa (yalnızca terminal) ya da Tern ayrılınca Mac yeniden kilitlenir ve ekran uyur. Pusu bunun için Tern'in kendi günlük dosyasını okur; hiçbir yere bir şey göndermez.
+- **Kapak kapalıyken** (kapak modu açık): Uzak bağlantı için sanal bir ekran açılır; kilit ekranını görüp açabilirsin (yaklaşık 1 W).
+- **Mac'in başına döndüğünde:** Mac'in kendi klavyesine ya da trackpad'ine dokunman (kilit ekranındayken bile) ya da kapağı açman modu bitirir ve ekranı geri getirir. Ekran parlaklığı ve klavye ışığı eski haline döner.
+
+Başka bir uzak erişim uygulaması kullanıyorsan Ayarlar'daki **Ekranı hiç uyutma** seçeneğini aç: ekran açık ama karanlık kalır.
 
 </details>
 
@@ -168,13 +177,14 @@ pusu on [süre]           Aç (60, 90m, 2h, 1h30m; boşsa varsayılan süre)
 pusu off                 Kapat
 pusu toggle              Aç/kapat
 pusu status              Çalışma durumunu JSON olarak yazdır
-pusu vnc                 Uzaktan bağlanmaya hazırla (karart + isteğe bağlı kilit)
+pusu vnc                 Uzaktan bağlanmaya hazırla (ekranı kapat + isteğe bağlı kilit)
 pusu lid [on|off]        Kapak modunu aç/kapat (argümansız: değiştir)
 pusu blackout            Ekranı karart, kilitleme
 pusu lock                Ekranı kilitle
 pusu wake                Ekranı uyandır
 pusu settings            Ayarlar penceresini aç
 pusu diagnostics         Tanılama bilgisini yazdır
+pusu log [sayı|clear]    Son olayları yazdır (son 3 gün)
 pusu install-helper      Yönetici yardımcısını kur
 pusu uninstall-helper    Yönetici yardımcısını kaldır
 pusu version             Sürüm

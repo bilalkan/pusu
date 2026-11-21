@@ -5,7 +5,7 @@ import PusuCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = SettingsStore()
-    private lazy var session = SessionController(settings: settings)
+    private lazy var session = SessionController(settings: settings, events: EventLog.shared, remoteClients: TernClientWatcher())
     private var statusController: StatusItemController!
     private var settingsWindow: SettingsWindowController!
     private var aboutWindow: AboutWindowController!
@@ -13,6 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notifier = Notifier()
     private var cancellables = Set<AnyCancellable>()
     private var commandObserver: NSObjectProtocol?
+    private var systemObservers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var localInputMonitor: Any?
+    private var lastCommandID: String?
+    private var remoteModeStartedAt = Date.distantPast
     private var pendingCommand: PusuCommand?
     private lazy var updates = UpdateMonitor(settings: settings, currentVersion: CLI.version) { [weak self] title, body in
         self?.notify(title, body)
@@ -32,10 +36,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         installMainMenu()
         loadAppIcon()
+        EventLog.shared.prune()
+        EventLog.shared.record("Pusu \(CLI.version) started")
+        // Önceki çalıştırma ekran karartılmışken beklenmedik şekilde kapandıysa parlaklığı geri getir.
+        if (session.remote as? RemoteController)?.restoreAfterCrashIfNeeded() == true {
+            EventLog.shared.record("Display brightness restored after an unexpected quit")
+        }
+        observeSystemEvents()
 
         session.onEvent = { [weak self] event in
             self?.handle(event: event)
         }
+        session.$remoteBlankActive
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active in self?.setLocalInputMonitor(active) }
+            .store(in: &cancellables)
 
         statusController = StatusItemController(
             session: session,
@@ -205,6 +221,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         session.shutdown()
+        EventLog.shared.record("Pusu quit")
+        for (center, observer) in systemObservers {
+            center.removeObserver(observer)
+        }
         if let commandObserver {
             DistributedNotificationCenter.default().removeObserver(commandObserver)
         }
@@ -348,6 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
                 try HelperInstaller.install(helperBinary: helperURL, expectedSHA256: AppBundle.helperSHA256, appBundlePath: AppBundle.url?.path)
+                EventLog.shared.record("Helper \(isUpdate ? "updated" : "installed") (version \(HelperProtocol.version))")
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .pusuHelperChanged, object: nil)
                     self?.notify(
@@ -357,6 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.session.refreshLidState()
                 }
             } catch {
+                EventLog.shared.record("Helper install failed: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .pusuHelperChanged, object: nil)
                     if !(self?.isUserCancelled(error) ?? false) {
@@ -504,7 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let remoteManagement = remote.remoteManagementRunning()
             DispatchQueue.main.async {
                 guard let self else { return }
-                if sharing == .running || remoteManagement {
+                if sharing == .running || remoteManagement || TernClientWatcher.isInstalled {
                     self.session.enterRemoteMode(lock: lock)
                     return
                 }
@@ -635,13 +657,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .remoteMode(let active, let locked, let slept):
             NotificationCenter.default.post(name: .pusuStateChanged, object: nil)
             if active {
-                var parts = [L("Sistem uyanık, ekran karartıldı.", "The system is awake and the display is off.")]
+                var parts: [String] = []
+                if session.remoteVirtualDisplay {
+                    parts.append(L("Kapak kapalı: uzak bağlantılar için sanal ekran açık.", "Lid closed: a virtual display is on for remote connections."))
+                } else if session.remotePanelDark {
+                    parts.append(L("Ekran açık ama karanlık.", "The display is on but dark."))
+                } else if slept {
+                    parts.append(L("Ekran uyudu; Tern bağlanınca karanlık olarak uyanır.", "The display is asleep; it wakes up dark when Tern connects."))
+                } else {
+                    parts.append(L("Ekran kapatılamadı.", "The display could not be turned off."))
+                }
                 if locked { parts.append(L("Oturum kilitli.", "The session is locked.")) }
-                if !slept { parts.append(L("Ekran uyku komutu başarısız oldu.", "The display sleep command failed.")) }
-                parts.append(L("VNC ile bağlanabilirsiniz.", "You can connect over VNC."))
+                parts.append(L("Mac'in başındaysan kilidi açıp tıklaman yeterli.", "At the Mac, unlock and click to end it."))
                 notify(L("Uzak erişim modu", "Remote access mode"), parts.joined(separator: " "))
             } else {
-                notify(L("Ekran uyandırıldı", "Display woken"), L("Uzak erişim karartması kapandı.", "Remote access blackout ended."))
+                notify(L("Uzak erişim modu kapandı", "Remote access mode ended"), L("Ekran normale döndü.", "The display is back to normal."))
             }
         case .message(let title, let body):
             notify(title, body)
@@ -658,6 +688,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let command = PusuCommand(wireName: raw, minutes: minutes),
               CommandParser.isAllowedFromDistributedNotification(command)
         else { return }
+        // CLI, onay görmezse aynı komutu aynı kimlikle yeniden gönderir: ikinci kez işleme.
+        if let id = note.userInfo?["id"] as? String, CommandDelivery.isValidID(id) {
+            // Uygulama komutu yavaş işlediyse CLI aynı kimlikle yeniden sorar: onayı yinele.
+            guard id != lastCommandID else {
+                CommandDelivery.writeAck(id)
+                return
+            }
+            lastCommandID = id
+            handle(command: command, source: .external)
+            CommandDelivery.writeAck(id)
+            return
+        }
         handle(command: command, source: .external)
     }
 
@@ -670,6 +712,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         /// `pusu://` bağlantısı (bir web sayfası da açabilir).
         case url
 
+        var logLabel: String {
+            switch self {
+            case .user: return "menu/shortcut"
+            case .external: return "command line"
+            case .url: return "pusu:// link"
+            }
+        }
+
         /// Dışarıdan gelen komutlar asla yönetici parolası penceresi açmaz; yoksa kötü niyetli
         /// bir süreç ya da sayfa Pusu adına inandırıcı bir parola isteği tetikleyebilir.
         var mayPromptForAdmin: Bool { self == .user }
@@ -681,6 +731,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handle(command: PusuCommand, source: CommandSource = .user) {
+        let minutes = command.minutes.map { " \($0)m" } ?? ""
+        EventLog.shared.record("Command: \(command.wireName)\(minutes) (from \(source.logLabel))")
         switch command {
         case .toggle:
             session.toggle(allowLidPrompt: source.mayPromptForAdmin, maxDuration: source.maxDuration)
@@ -713,6 +765,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             setLid(target, allowPrompt: source.mayPromptForAdmin)
+        }
+    }
+
+    /// Uzak erişim modunda Mac'in kendi trackpad'i/klavyesi kullanılırsa (Mac başında biri varsa)
+    /// mod biter. Uzaktan (Tern, Ekran Paylaşımı) gelen olaylar, onları gönderen sürecin
+    /// numarasını taşır; donanımdan gelenlerde bu numara 0'dır. Kilit ekranındayken macOS
+    /// uygulamalara olay göstermez: Mac başındaki kişi önce kilidi açar, sonra tıklar.
+    private func setLocalInputMonitor(_ active: Bool) {
+        if let localInputMonitor {
+            NSEvent.removeMonitor(localInputMonitor)
+            self.localInputMonitor = nil
+        }
+        guard active else { return }
+        remoteModeStartedAt = Date()
+        // İmleç hareketi sayılmaz (masaya çarpma vb.); tıklama, kaydırma ve tuşlar sayılır.
+        localInputMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .keyDown]
+        ) { [weak self] event in
+            guard let self, let cgEvent = event.cgEvent else { return }
+            // Modu başlatan tıklamanın devamı sayılmasın.
+            guard Date().timeIntervalSince(self.remoteModeStartedAt) > 3 else { return }
+            guard cgEvent.getIntegerValueField(.eventSourceUnixProcessID) == 0 else { return }
+            self.session.localInputDetected()
+        }
+    }
+
+    /// Ekran, kilit ve uyku olaylarını günlüğe yazar. Uzaktan bağlanılamadığında "o sırada ekran
+    /// açık mıydı, oturum kilitli miydi?" sorusunu yanıtlamak için.
+    private func observeSystemEvents() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        let workspaceEvents: [(Notification.Name, String)] = [
+            (NSWorkspace.screensDidSleepNotification, "Display went to sleep"),
+            (NSWorkspace.screensDidWakeNotification, "Display woke up"),
+            (NSWorkspace.willSleepNotification, "System is going to sleep"),
+            (NSWorkspace.didWakeNotification, "System woke up"),
+            (NSWorkspace.sessionDidResignActiveNotification, "User session became inactive (switched away)"),
+            (NSWorkspace.sessionDidBecomeActiveNotification, "User session became active"),
+        ]
+        for (name, text) in workspaceEvents {
+            let observer = workspace.addObserver(forName: name, object: nil, queue: .main) { _ in
+                EventLog.shared.record(text)
+            }
+            systemObservers.append((workspace, observer))
+        }
+
+        let distributed = DistributedNotificationCenter.default()
+        let lockEvents: [(String, String)] = [
+            ("com.apple.screenIsLocked", "Screen locked"),
+            ("com.apple.screenIsUnlocked", "Screen unlocked"),
+        ]
+        for (name, text) in lockEvents {
+            let observer = distributed.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { _ in
+                EventLog.shared.record(text)
+            }
+            systemObservers.append((distributed, observer))
         }
     }
 

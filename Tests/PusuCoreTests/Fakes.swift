@@ -81,6 +81,7 @@ final class FakeRemote: RemoteControlling {
     }
 
     func isScreenLocked() -> Bool { locked }
+    func unlock() { locked = false }
 
     func sleepDisplay() -> Bool {
         sleepCalls += 1
@@ -92,9 +93,71 @@ final class FakeRemote: RemoteControlling {
         return true
     }
 
+    private(set) var rememberCalls = 0
+    private(set) var forgetCalls = 0
+    func rememberPanelLevels() { rememberCalls += 1 }
+    func forgetPanelLevels() { forgetCalls += 1 }
+
+    var darkenResult = true
+    private(set) var darkened = false
+    private(set) var darkenCalls = 0
+    private(set) var maintainCalls = 0
+    private(set) var restoreCalls = 0
+
+    func darkenPanel() -> Bool {
+        darkenCalls += 1
+        darkened = darkenResult
+        return darkenResult
+    }
+
+    func maintainDarkPanel() { maintainCalls += 1 }
+
+    private(set) var virtualDisplayActive = false
+    private(set) var virtualShowCalls = 0
+    func showVirtualDisplay() -> Bool {
+        virtualShowCalls += 1
+        virtualDisplayActive = true
+        return true
+    }
+    func hideVirtualDisplay() { virtualDisplayActive = false }
+
+    var watched = false
+    func screenIsBeingWatched() -> Bool { watched }
+
+    var lastLocalInput: Date?
+    func lastLocalInputDate() -> Date? { lastLocalInput }
+
+    func restorePanel() {
+        restoreCalls += 1
+        darkened = false
+    }
+
     func screenSharingState(timeout: TimeInterval) -> ScreenSharingState { sharing }
 
     func remoteManagementRunning(timeout: TimeInterval) -> Bool { false }
+}
+
+final class FakeRemoteClients: RemoteClientMonitoring {
+    var onClientEvent: ((Bool) -> Void)?
+    private(set) var count = 0
+    var isConnected: Bool { count > 0 }
+    private(set) var started = false
+    func start() { started = true }
+    func stop() { started = false }
+    func attach() {
+        count += 1
+        if started { onClientEvent?(true) }
+    }
+    func detach() {
+        guard count > 0 else { return }
+        count -= 1
+        if started { onClientEvent?(false) }
+    }
+}
+
+final class FakeEvents: EventRecording {
+    private(set) var messages: [String] = []
+    func record(_ message: String) { messages.append(message) }
 }
 
 /// Bir SessionController ve sahte bağımlılıkları. Her harness kendi geçici dizinini kullanır.
@@ -105,6 +168,9 @@ final class SessionHarness {
     let assertions = FakeAssertions()
     let lid = FakeLid()
     let remote = FakeRemote()
+    let eventLog = FakeEvents()
+    let clients = FakeRemoteClients()
+    var lidClosed: Bool? = false
     let history: SessionHistoryStore
     var battery: BatteryStatus?
     private(set) var runtimeStates: [RuntimeState] = []
@@ -130,6 +196,9 @@ final class SessionHarness {
             lid: lid,
             remote: remote,
             history: history,
+            events: eventLog,
+            remoteClients: clients,
+            lidClosedReader: { [unowned self] in self.lidClosed },
             batteryReader: { [unowned self] in self.battery },
             runtimeWriter: { [unowned self] state in self.runtimeStates.append(state) }
         )

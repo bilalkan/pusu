@@ -361,14 +361,20 @@ private struct SessionTabView: View {
     }
 
     private var modesCard: some View {
-        let canRemote = ui.sharingState == .running || ui.remoteManagement
+        let canRemote = ui.sharingState == .running || ui.remoteManagement || TernClientWatcher.isInstalled
         let vncSubtitle: String
         if session.remoteBlankActive {
-            vncSubtitle = L("Açık · ekran karartıldı", "On · display is off")
+            if session.remoteVirtualDisplay {
+                vncSubtitle = L("Açık · kapak kapalı, sanal ekran açık", "On · lid closed, virtual display on")
+            } else if session.remotePanelDark {
+                vncSubtitle = L("Açık · ekran açık ama karanlık", "On · display on but dark")
+            } else {
+                vncSubtitle = L("Açık · ekran uyuyor, bağlantı bekleniyor", "On · display asleep, waiting for a connection")
+            }
         } else if canRemote {
             vncSubtitle = settings.remoteLockOnBlackout
-                ? L("Ekranı karart, oturumu kilitle", "Turn the display off and lock the session")
-                : L("Ekranı karart, oturum açık kalsın", "Turn the display off, keep the session unlocked")
+                ? L("Ekranı kapat, oturumu kilitle", "Turn the display off and lock the session")
+                : L("Ekranı kapat, oturum açık kalsın", "Turn the display off, keep the session unlocked")
         } else {
             vncSubtitle = L("Ekran Paylaşımı kapalı", "Screen Sharing is off")
         }
@@ -427,6 +433,18 @@ private struct SessionTabView: View {
                 subtitle: L("Kapalıysa yalnızca ekran karartılır; oturum açık kalır.", "When off, only the display is turned off; the session stays unlocked.")
             ) {
                 SettingsToggle(title: L("Uzak erişimde oturumu kilitle", "Lock the session for remote access"), isOn: $settings.remoteLockOnBlackout)
+            }
+
+            Divider()
+
+            SettingRow(
+                title: L("Ekranı hiç uyutma (diğer uygulamalar için)", "Never sleep the display (for other apps)"),
+                subtitle: L(
+                    "Normalde ekran bağlantı gelene kadar uyur. Tern bağlanınca ekran uyanır ama panel karanlık kalır; Apple Ekran Paylaşımı ekranı kendisi uyandırır. Başka bir uzak erişim uygulaması kullanıyorsan bunu aç: ekran hep açık ama karanlık kalır (yaklaşık 2 W). Kapak modu açıkken ekran zaten uyutulmaz; kapak kapanınca uzak bağlantı için sanal ekran açılır.",
+                    "Normally the display sleeps until a connection. When Tern connects, the display wakes but the panel stays dark; Apple Screen Sharing wakes the display itself. If you use another remote access app, turn this on: the display stays on but dark (about 2 W). With lid mode on the display never sleeps; when the lid closes, a virtual display is used for remote connections."
+                )
+            ) {
+                SettingsToggle(title: L("Ekranı hiç uyutma (diğer uygulamalar için)", "Never sleep the display (for other apps)"), isOn: $settings.remoteKeepsDisplayOn)
             }
 
             if session.lidMode, session.battery?.isOnBattery == true {

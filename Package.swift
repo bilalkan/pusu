@@ -10,7 +10,12 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "PusuVirtualDisplay",
+            linkerSettings: [.linkedFramework("CoreGraphics")]
+        ),
+        .target(
             name: "PusuCore",
+            dependencies: ["PusuVirtualDisplay"],
             linkerSettings: [.linkedFramework("IOKit")]
         ),
         .executableTarget(

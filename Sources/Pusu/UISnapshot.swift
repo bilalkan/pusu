@@ -310,6 +310,16 @@ enum UISnapshot {
         func isScreenLocked() -> Bool { false }
         func sleepDisplay() -> Bool { true }
         func wakeDisplay() -> Bool { true }
+        func rememberPanelLevels() {}
+        func forgetPanelLevels() {}
+        func darkenPanel() -> Bool { true }
+        func maintainDarkPanel() {}
+        func showVirtualDisplay() -> Bool { true }
+        func hideVirtualDisplay() {}
+        var virtualDisplayActive: Bool { false }
+        func screenIsBeingWatched() -> Bool { false }
+        func lastLocalInputDate() -> Date? { nil }
+        func restorePanel() {}
         func screenSharingState(timeout: TimeInterval) -> ScreenSharingState { .running }
         func remoteManagementRunning(timeout: TimeInterval) -> Bool { false }
     }

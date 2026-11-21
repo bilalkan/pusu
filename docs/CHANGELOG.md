@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.5 — 2026-11-21
+
+Remote access mode, rebuilt after testing with Screen Sharing and with Tern from a phone.
+
+- **Display off until someone connects.** The session locks and the display sleeps (about 0.7 W on an M2 MacBook Air, versus about 4.7 W at normal brightness). Apple Screen Sharing wakes the display itself.
+- **Tern support.** When Tern connects, the display wakes but stays dark: brightness, keyboard backlight and the picture on the built-in panel are turned down, while the remote side sees the lock screen normally (about 2 W). If nobody looks at the screen within 30 seconds (a terminal-only connection), or when Tern disconnects, the Mac locks and the display sleeps again. Pusu reads Tern's own log file for this; nothing is sent anywhere.
+- **Lid closed.** With lid mode on, closing the lid switches to a virtual display, so remote connections still see the lock screen and can unlock it (about 1 W). With lid mode on, the display is kept dark instead of asleep so the lock screen moves over when the lid closes.
+- **Someone at the Mac.** Touching the Mac's own keyboard or trackpad — even on the lock screen — or opening the lid ends remote access mode and brings the display back. Input from Tern or Screen Sharing doesn't count.
+- Display brightness and the keyboard backlight return to their levels from before the mode; after an unexpected quit, at the next launch. The keyboard backlight is only dimmed temporarily, so its setting in Control Center is never changed.
+- New option for other remote access apps: "Never sleep the display" keeps it on but dark.
+- **Event log.** `pusu log` shows what happened in the last three days (sessions, remote access, display sleep and wake, screen lock, lid). Kept only on this Mac; the last events are also in the diagnostics.
+- Commands from the `pusu` command line are confirmed by the app and resent if needed, so a command sent right after launch is no longer lost.
+- Remote access can be started without Screen Sharing when Tern is installed.
+
 ## 1.0.4 — 2026-11-20
 
 - Optional update check. On first launch Pusu asks whether to check automatically once a day or only when you ask; "Check for Updates…" in the menu works either way. A new version shows up in the menu with one notification, with the `brew upgrade` command for Homebrew installs. The check only reads GitHub's public latest-release address — no cookies, identifiers or usage data.

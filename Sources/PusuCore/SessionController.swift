@@ -103,6 +103,15 @@ public enum RuntimePaths {
     public static var activeSession: URL {
         supportDirectory.appendingPathComponent("active-session.json")
     }
+
+    public static var events: URL {
+        supportDirectory.appendingPathComponent("events.log")
+    }
+
+    /// Uygulamanın en son aldığı CLI komutunun kimliği (CLI teslimi doğrulamak için okur).
+    public static var commandAck: URL {
+        supportDirectory.appendingPathComponent("command-ack")
+    }
 }
 
 public enum RuntimeStateStore {
@@ -146,6 +155,8 @@ public final class SessionController: NSObject, ObservableObject {
     public let lid: LidControlling
     public let remote: RemoteControlling
     public let history: SessionHistoryStore
+    /// Kısa süreli olay günlüğü (`nil`: kayıt tutulmaz; testler sahtesini verir).
+    public let events: EventRecording?
     private let readBattery: () -> BatteryStatus?
     private let writeRuntimeState: (RuntimeState) -> Void
 
@@ -160,6 +171,25 @@ public final class SessionController: NSObject, ObservableObject {
     @Published public private(set) var sleepDisabledActive = false
     @Published public private(set) var remoteBlankActive = false
     @Published public private(set) var remoteLocked = false
+    /// Uzak erişim modunda ekran açık ama karartılmış mı (parlaklık 0, siyah görüntü)?
+    @Published public private(set) var remotePanelDark = false
+    /// Uzak erişim modunda (kapak kapalıyken) sanal ekran açık mı?
+    @Published public private(set) var remoteVirtualDisplay = false
+    /// Uzak erişim modunda ekran bağlantı beklerken uyutuldu mu?
+    @Published public private(set) var remoteDisplaySlept = false
+    public var remoteClientConnected: Bool { remoteClients?.isConnected == true }
+    public let remoteClients: RemoteClientMonitoring?
+    private let lidClosedReader: () -> Bool?
+    private var lastLidClosed: Bool?
+    private var remoteLockRequested = false
+    private var darkSince: Date?
+    private var localInputBaseline = Date.distantPast
+    /// Modu başlattıktan sonraki bu süre içindeki dokunuşlar sayılmaz (menüden tıklama vb.).
+    static let localInputGrace: TimeInterval = 3
+    private var darkPending = false
+    private var darkFailureLogged = false
+    private var lastViewedAt: Date?
+    private var viewedSinceWake = false
     @Published public private(set) var lastError: String?
 
     public var onEvent: ((PusuEvent) -> Void)?
@@ -178,6 +208,9 @@ public final class SessionController: NSObject, ObservableObject {
         lid: LidControlling? = nil,
         remote: RemoteControlling = RemoteController(),
         history: SessionHistoryStore? = nil,
+        events: EventRecording? = nil,
+        remoteClients: RemoteClientMonitoring? = nil,
+        lidClosedReader: @escaping () -> Bool? = { LidStateReader.read().isClosed },
         batteryReader: @escaping () -> BatteryStatus? = BatteryReader.read,
         runtimeWriter: @escaping (RuntimeState) -> Void = RuntimeStateStore.write
     ) {
@@ -186,6 +219,9 @@ public final class SessionController: NSObject, ObservableObject {
         self.lid = lid ?? LidController(settings: settings)
         self.remote = remote
         self.history = history ?? SessionHistoryStore()
+        self.events = events
+        self.remoteClients = remoteClients
+        self.lidClosedReader = lidClosedReader
         self.readBattery = batteryReader
         self.writeRuntimeState = runtimeWriter
         self.battery = batteryReader()
@@ -216,6 +252,7 @@ public final class SessionController: NSObject, ObservableObject {
                     "Battery is at \(Localization.percent(current?.percent ?? 0)); Pusu did not start because it is below the battery threshold."
                 )
                 lastError = message
+                log("Session not started: battery \(current?.percent ?? 0)% is below the threshold")
                 onEvent?(.message(title: L("Pil azaldı", "Battery low"), body: message))
                 return
             }
@@ -232,7 +269,8 @@ public final class SessionController: NSObject, ObservableObject {
         applyAssertions()
         refreshBattery()
         writeRuntime()
-        onEvent?(.started(duration))
+        log(wasOn ? "Duration changed: \(Self.logLabel(duration))" : "Session on: \(Self.logLabel(duration))")
+        emit(.started(duration))
     }
 
     public func stop(
@@ -253,13 +291,13 @@ public final class SessionController: NSObject, ObservableObject {
         duration = nil
         endDate = nil
         clock.remaining = nil
-        remoteBlankActive = false
-        remoteLocked = false
+        if wasRemote { teardownRemoteMode() }
         stopTimers()
         assertions.releaseAll()
 
-        if wasRemote, wake {
-            _ = remote.wakeDisplay()
+        if wasRemote {
+            let woke = wake ? remote.wakeDisplay() : false
+            log(wake ? "Remote access mode off (display wake: \(woke ? "ok" : "failed"))" : "Remote access mode off")
         }
 
         if lidMode {
@@ -267,15 +305,16 @@ public final class SessionController: NSObject, ObservableObject {
                 try lid.setEnabled(false, allowPrompt: allowLidPrompt)
                 lidMode = false
                 sleepDisabledActive = lid.sleepDisabled() == true
-                onEvent?(.lidChanged(false))
+                emit(.lidChanged(false))
             } catch {
                 lastError = error.localizedDescription
-                onEvent?(.error(error.localizedDescription))
+                emit(.error(error.localizedDescription))
             }
         }
 
         writeRuntime()
-        onEvent?(.stopped(reason))
+        log("Session off (reason: \(reason.rawValue))")
+        emit(.stopped(reason))
     }
 
     /// - Parameters:
@@ -309,7 +348,8 @@ public final class SessionController: NSObject, ObservableObject {
         endDate = newEnd
         clock.remaining = max(0, newEnd.timeIntervalSinceNow)
         writeRuntime()
-        onEvent?(.started(duration ?? .indefinite))
+        log("Session extended by \(Self.logLabel(PusuDuration(seconds: seconds))), now \(Self.logLabel(duration ?? .indefinite)) in total")
+        emit(.started(duration ?? .indefinite))
     }
 
     public func clearError() {
@@ -355,7 +395,7 @@ public final class SessionController: NSObject, ObservableObject {
                         self.history.markLidUsed()
                         self.lastError = nil
                         self.writeRuntime()
-                        self.onEvent?(.lidChanged(true))
+                        self.emit(.lidChanged(true))
                         if BatteryPolicy.shouldDisableLid(
                             battery: self.battery,
                             floorEnabled: self.settings.lidBatteryFloorEnabled,
@@ -363,7 +403,7 @@ public final class SessionController: NSObject, ObservableObject {
                         ) {
                             let percent = Localization.percent(self.battery?.percent ?? 0)
                             let floor = Localization.percent(self.settings.lidBatteryFloorPercent)
-                            self.onEvent?(.message(
+                            self.emit(.message(
                                 title: L("Kapak modu pilde", "Lid mode on battery"),
                                 body: L(
                                     "Pil \(percent). \(floor) altında otomatik kapanacak.",
@@ -376,7 +416,7 @@ public final class SessionController: NSObject, ObservableObject {
                         self.sleepDisabledActive = sleepDisabled
                         self.lastError = nil
                         self.writeRuntime()
-                        self.onEvent?(.lidChanged(false))
+                        self.emit(.lidChanged(false))
                     }
                     completion(.success(()))
                 }
@@ -389,34 +429,275 @@ public final class SessionController: NSObject, ObservableObject {
         }
     }
 
+    /// Uzak erişim modu.
+    ///
+    /// - Kapak açık, kimse izlemiyor: oturum kilitlenir, ekran uyur (en az pil).
+    /// - Tern bağlanınca ekran uyanır ama panel ve klavye ışığı karanlık kalır. 30 saniye içinde
+    ///   kimse ekranı izlemezse (yalnızca terminal) ekran yeniden uyur.
+    /// - Ekran bir kez izlendiyse, bağlantı sürdükçe karanlık ve açık kalır (sekme değiştirip
+    ///   dönünce ekran hazırdır). Bağlantı kapanınca ya da 10 dakika izlenmezse kilitlenip uyur.
+    /// - Ekran uyurken biri izlemeye başlarsa (Apple Ekran Paylaşımı ekranı kendisi uyandırır)
+    ///   panel hemen karartılır.
+    /// - "Ekranı hiç uyutma" ayarı açıksa ekran hep açık ama karanlıktır (diğer uygulamalar için).
+    /// - Kapak kapalı ve kapak modu açıksa dahili ekran zaten kapalıdır; uzak bağlantı görebilsin
+    ///   diye sanal bir ekran açılır.
     public func enterRemoteMode(lock: Bool) {
         if !isOn { start(.indefinite) }
 
         remoteBlankActive = true
-        var locked = false
-        if lock {
-            locked = remote.lockScreen()
-        }
+        remoteLockRequested = lock
+        remote.rememberPanelLevels()
+        // Modu başlatan tıklama "Mac başında biri var" sayılmasın: bundan sonrası sayılır.
+        localInputBaseline = max(remote.lastLocalInputDate() ?? .distantPast, Date().addingTimeInterval(Self.localInputGrace))
+        let locked = lock ? remote.lockScreen() : false
         remoteLocked = locked
-        applyAssertions()
+        log("Remote access mode on (lock requested: \(Self.yesNo(lock)), locked: \(Self.yesNo(locked)))")
 
-        let slept = remote.sleepDisplay()
+        remoteClients?.onClientEvent = { [weak self] attached in
+            self?.remoteClientEvent(attached: attached)
+        }
+        remoteClients?.start()
+
+        lastLidClosed = lidClosedReader()
+        if usesVirtualDisplay {
+            updateVirtualDisplay()
+        } else if remoteKeepsDisplayAwake || remote.screenIsBeingWatched() {
+            // Ekranı şu an izleyen biri var (ör. modu uzaktan başlattı): uyutma, karart.
+            if remote.screenIsBeingWatched() { lastViewedAt = Date(); viewedSinceWake = true }
+            wakeDark(reason: remoteKeepsDisplayAwake ? "Display kept on (lid mode or setting)" : "Screen is being viewed")
+        } else {
+            goIdle(relock: false)
+        }
         history.markRemoteUsed()
         writeRuntime()
-        onEvent?(.remoteMode(active: true, locked: locked, displaySlept: slept))
+        emit(.remoteMode(active: true, locked: locked, displaySlept: remoteDisplaySlept || remotePanelDark || remoteVirtualDisplay))
     }
 
     public func exitRemoteMode(wake: Bool = true) {
-        if wake { _ = remote.wakeDisplay() }
-        remoteBlankActive = false
-        remoteLocked = false
+        guard remoteBlankActive else { return }
+        teardownRemoteMode()
+        let woke = wake ? remote.wakeDisplay() : false
+        log(wake ? "Remote access mode off (display wake: \(woke ? "ok" : "failed"))" : "Remote access mode off")
         if isOn { applyAssertions() }
         writeRuntime()
-        onEvent?(.remoteMode(active: false, locked: false, displaySlept: false))
+        emit(.remoteMode(active: false, locked: false, displaySlept: false))
+    }
+
+    /// Mac'in kendi trackpad'i/klavyesi kullanıldı (uzaktan gelen değil): Mac başında biri var.
+    public func localInputDetected() {
+        guard remoteBlankActive else { return }
+        log("Input from this Mac's own trackpad or keyboard; leaving remote access mode")
+        exitRemoteMode(wake: true)
+    }
+
+    /// Bağlantı gelince karartılmış ekranın açık kalacağı süre (kimse izlemezse).
+    public static let remoteUnviewedTimeout: TimeInterval = 30
+    /// Ekran bir kez izlendikten sonra, izleme olmadan açık kalacağı en uzun süre.
+    public static let remoteViewedTimeout: TimeInterval = 10 * 60
+
+    /// Ekran hiç uyutulmaz, karanlık tutulur: ayar açıksa ya da kapak modu açıksa. Kapak modu
+    /// açıkken kapak, uyanık bir ekranla kapanmalıdır: ancak o zaman macOS dahili ekranı devreden
+    /// çıkarır ve kilit ekranı (parola kutusu) sanal ekrana geçer. Uyuyan ekranla kapanırsa kilit
+    /// ekranı görünmeyen dahili ekranda kalır.
+    private var remoteKeepsDisplayAwake: Bool {
+        settings.remoteKeepsDisplayOn || lidMode || sleepDisabledActive
+    }
+
+    private var usesVirtualDisplay: Bool {
+        lastLidClosed == true && (lidMode || sleepDisabledActive)
+    }
+
+    /// Ekranı uyandırır ama panel ve klavye ışığını karanlık tutar.
+    private func wakeDark(reason: String) {
+        guard remoteBlankActive else { return }
+        darkSince = Date()
+        guard !remotePanelDark else { return }
+        // Önce karart (uyuyan ekranın parlaklığı da ayarlanabilir), sonra uyandır. Renk eğrisi
+        // ancak ekran açıldıktan sonra uygulanabildiği için kısa aralıklarla yeniden denenir.
+        darkFailureLogged = false
+        let wasAsleep = remoteDisplaySlept
+        var dark = remote.darkenPanel()
+        if wasAsleep { _ = remote.wakeDisplay() }
+        remoteDisplaySlept = false
+        dark = remote.darkenPanel() || dark
+        darkPending = !dark
+        remotePanelDark = dark
+        if dark {
+            log("\(reason): display on, panel and keyboard dark")
+        } else {
+            log("\(reason): waking the display dark")
+            retryDarken(attempt: 1)
+        }
+        applyAssertions()
+        writeRuntime()
+    }
+
+    /// Uyanan ekran aktif olunca karartmayı tamamla (uyanma ~0,5 sn sürer).
+    private func retryDarken(attempt: Int) {
+        // Ekran açılır açılmaz karartmak için sık dene (25 ms, en fazla ~3 sn).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) { [weak self] in
+            guard let self, self.remoteBlankActive, self.darkPending, self.darkSince != nil else { return }
+            self.completePendingDarken()
+            if self.darkPending, attempt < 120 { self.retryDarken(attempt: attempt + 1) }
+        }
+    }
+
+    private func completePendingDarken() {
+        guard darkPending else { return }
+        if remote.darkenPanel() {
+            darkPending = false
+            remotePanelDark = true
+            log("Panel and keyboard dark")
+            applyAssertions()
+            writeRuntime()
+        }
+    }
+
+    /// Kimse izlemiyor: parlaklığı geri al, gerekirse yeniden kilitle ve ekranı uyut.
+    private func goIdle(relock: Bool) {
+        restorePanelIfNeeded()
+        // Karartma tamamlanamadıysa da kaydedilen parlaklık geri yüklenir.
+        if darkPending { remote.restorePanel() }
+        darkPending = false
+        viewedSinceWake = false
+        darkSince = nil
+        // Uzaktaki kişi kilitlemeyi unutmuş olabilir.
+        if relock, remoteLockRequested, !remote.isScreenLocked() {
+            remoteLocked = remote.lockScreen()
+        }
+        applyAssertions()
+        remoteDisplaySlept = remote.sleepDisplay()
+        log(remoteDisplaySlept ? "Display asleep until a remote connection" : "Display sleep failed")
+        writeRuntime()
+    }
+
+    private func remoteClientEvent(attached: Bool) {
+        guard remoteBlankActive else { return }
+        log(attached ? "Remote client connected (Tern)" : "Remote client disconnected (Tern)")
+        guard !usesVirtualDisplay, !remoteKeepsDisplayAwake else { return }
+        if attached {
+            // Yeni bağlantı: ekranı karanlık uyandır, kimse izlemezse 30 sn sonra yeniden uyut.
+            viewedSinceWake = remote.screenIsBeingWatched()
+            wakeDark(reason: "Remote client connected")
+        } else if darkSince != nil, !remote.screenIsBeingWatched() {
+            goIdle(relock: true)
+        }
+    }
+
+    /// Her saniye: karartmayı koru, izlenmeyi ve kapağı takip et.
+    private func remoteTick(now: Date) {
+        if let input = remote.lastLocalInputDate(), input > localInputBaseline {
+            localInputDetected()
+            return
+        }
+        if tickCounter % 2 == 0 { checkLidForRemoteMode() }
+        // Kapak açıldıysa mod az önce bitmiş olabilir.
+        guard remoteBlankActive, !usesVirtualDisplay else { return }
+        if remotePanelDark { remote.maintainDarkPanel() }
+        if darkPending {
+            completePendingDarken()
+            if darkPending, let since = darkSince, now.timeIntervalSince(since) >= 5, !darkFailureLogged {
+                darkFailureLogged = true
+                log("Display could not be darkened")
+            }
+        }
+        if remoteKeepsDisplayAwake {
+            // Kapak modu sonradan açıldıysa uyuyan ekranı karanlık uyandır.
+            if darkSince == nil { wakeDark(reason: "Lid mode is on") }
+            return
+        }
+
+        if remote.screenIsBeingWatched() {
+            lastViewedAt = now
+            if darkSince == nil {
+                // Ekran uyurken biri izlemeye başladı (ör. Apple Ekran Paylaşımı uyandırdı).
+                viewedSinceWake = true
+                wakeDark(reason: "Screen is being viewed")
+            } else if !viewedSinceWake {
+                viewedSinceWake = true
+                log("Screen is being viewed")
+            }
+            return
+        }
+
+        guard let darkSince else { return }
+        let since = max(darkSince, lastViewedAt ?? .distantPast)
+        let limit = viewedSinceWake ? Self.remoteViewedTimeout : Self.remoteUnviewedTimeout
+        if now.timeIntervalSince(since) >= limit {
+            log(viewedSinceWake ? "Screen not viewed for 10 minutes" : "Nobody viewed the screen")
+            goIdle(relock: true)
+        }
+    }
+
+    /// Kapak kapalıyken sanal ekranı aç, açılınca kaldır.
+    private func updateVirtualDisplay() {
+        if usesVirtualDisplay {
+            // Kapak kapalı: dahili ekran devre dışı. Uzak bağlantı için sanal ekran.
+            restorePanelIfNeeded()
+            if darkPending { remote.restorePanel() }
+            darkPending = false
+            darkSince = nil
+            viewedSinceWake = false
+            if !remote.virtualDisplayActive {
+                let shown = remote.showVirtualDisplay()
+                log(shown ? "Lid closed: virtual display on" : "Lid closed: virtual display could not be created")
+            }
+            remoteVirtualDisplay = remote.virtualDisplayActive
+            remoteDisplaySlept = false
+        } else {
+            if remote.virtualDisplayActive {
+                remote.hideVirtualDisplay()
+                log("Virtual display off")
+            }
+            remoteVirtualDisplay = false
+        }
+        applyAssertions()
+    }
+
+    /// Kapak açıldı/kapandı mı? İki saniyede bir bakılır.
+    private func checkLidForRemoteMode() {
+        let closed = lidClosedReader()
+        guard closed != lastLidClosed else { return }
+        let wasClosed = lastLidClosed == true
+        lastLidClosed = closed
+        if wasClosed, closed == false {
+            // Kapağı yalnızca Mac'in başındaki biri açabilir: modu bitir, ekranı geri ver.
+            log("Lid opened on this Mac; leaving remote access mode")
+            exitRemoteMode(wake: true)
+            return
+        }
+        log(closed == true ? "Lid closed" : "Lid opened")
+        updateVirtualDisplay()
+        writeRuntime()
+    }
+
+    /// Uzak erişim modunun bütün yan etkilerini geri alır.
+    private func teardownRemoteMode() {
+        remoteClients?.stop()
+        remoteClients?.onClientEvent = nil
+        if darkPending { remote.restorePanel() }
+        darkPending = false
+        darkFailureLogged = false
+        darkSince = nil
+        lastViewedAt = nil
+        viewedSinceWake = false
+        restorePanelIfNeeded()
+        if remote.virtualDisplayActive {
+            remote.hideVirtualDisplay()
+            log("Virtual display off")
+        }
+        remote.forgetPanelLevels()
+        remoteVirtualDisplay = false
+        remoteDisplaySlept = false
+        remoteBlankActive = false
+        remoteLocked = false
+        remoteLockRequested = false
     }
 
     public func shutdown() {
+        if remoteBlankActive { teardownRemoteMode() }
         if isOn {
+            log("Session off (reason: quit)")
             history.end(
                 reason: .quit,
                 battery: battery
@@ -443,15 +724,15 @@ public final class SessionController: NSObject, ObservableObject {
         let status = readBattery()
         battery = status
         sleepDisabledActive = lid.sleepDisabled() == true
-        onEvent?(.batteryUpdated(status))
+        emit(.batteryUpdated(status))
 
         // Kapak modu açık sanıyoruz ama SleepDisabled dışarıdan geri alınmış (ör. yardımcı
         // kendini kaldırdı ya da kullanıcı pmset çalıştırdı): durumu düzelt ve haber ver.
         if lidMode, !sleepDisabledActive {
             lidMode = false
             writeRuntime()
-            onEvent?(.lidChanged(false))
-            onEvent?(.message(
+            emit(.lidChanged(false))
+            emit(.message(
                 title: L("Kapak modu kapandı", "Lid mode turned off"),
                 body: L(
                     "Uyku ayarı Pusu dışında geri alındı; kapak kapanınca Mac uyuyabilir.",
@@ -469,7 +750,7 @@ public final class SessionController: NSObject, ObservableObject {
         ) {
             stop(reason: .battery, allowLidPrompt: false)
             let percent = Localization.percent(status?.percent ?? 0)
-            onEvent?(.message(
+            emit(.message(
                 title: L("Pil azaldı", "Battery low"),
                 body: L("Pil \(percent). Pusu otomatik kapatıldı.", "Battery is at \(percent). Pusu turned itself off.")
             ))
@@ -484,16 +765,16 @@ public final class SessionController: NSObject, ObservableObject {
             do {
                 try lid.setEnabled(false, allowPrompt: false)
                 lidMode = false
-                onEvent?(.lidChanged(false))
+                emit(.lidChanged(false))
                 let percent = Localization.percent(status?.percent ?? 0)
-                onEvent?(.message(
+                emit(.message(
                     title: L("Kapak modu kapatıldı", "Lid mode turned off"),
                     body: L("Pil \(percent). Pil koruması devreye girdi.", "Battery is at \(percent). The battery guard kicked in.")
                 ))
                 stop(reason: .lidBattery, allowLidPrompt: false)
             } catch {
                 lastError = error.localizedDescription
-                onEvent?(.error(L("Kapak modu kapatılamadı: \(error.localizedDescription)", "Could not turn off lid mode: \(error.localizedDescription)")))
+                emit(.error(L("Kapak modu kapatılamadı: \(error.localizedDescription)", "Could not turn off lid mode: \(error.localizedDescription)")))
             }
         }
     }
@@ -508,13 +789,61 @@ public final class SessionController: NSObject, ObservableObject {
         Diagnostics.collect(settings: settings, session: self, appVersion: appVersion)
     }
 
+    private func restorePanelIfNeeded() {
+        guard remotePanelDark else { return }
+        remote.restorePanel()
+        remotePanelDark = false
+        log("Display brightness and keyboard light restored")
+    }
+
+    // MARK: - Events
+
+    private func emit(_ event: PusuEvent) {
+        if let text = Self.logText(for: event) { log(text) }
+        onEvent?(event)
+    }
+
+    private func log(_ message: String) {
+        events?.record(message)
+    }
+
+    /// Olayın günlük satırı. Oturum ve uzak erişim olayları, daha ayrıntılı oldukları için
+    /// gerçekleştikleri yerde yazılır.
+    static func logText(for event: PusuEvent) -> String? {
+        switch event {
+        case .lidChanged(let enabled):
+            return "Lid mode \(enabled ? "on" : "off")"
+        case .message(let title, let body):
+            return "Notice: \(title): \(body)"
+        case .error(let message):
+            return "Error: \(message)"
+        case .started, .stopped, .remoteMode, .tick, .batteryUpdated:
+            return nil
+        }
+    }
+
+    public static func logLabel(_ duration: PusuDuration) -> String {
+        guard let seconds = duration.seconds else { return "indefinite" }
+        let total = Int(seconds.rounded())
+        if total < 60 { return "\(total)s" }
+        let hours = total / 3600, minutes = (total % 3600) / 60
+        if hours == 0 { return "\(minutes)m" }
+        return minutes == 0 ? "\(hours)h" : "\(hours)h \(minutes)m"
+    }
+
+    static func yesNo(_ value: Bool) -> String { value ? "yes" : "no" }
+
     // MARK: - Assertions and timers
 
     private func applyAssertions() {
         guard isOn else { return }
+        // Karartılmış (uyutulmamış) ekranda uzak bağlantı ekranı görebilsin diye ekran,
+        // "ekranı uyanık tut" ayarı kapalı olsa da açık tutulur.
         _ = assertions.acquire(
             system: true,
-            display: settings.keepDisplayAwake,
+            display: remoteBlankActive
+                ? (darkSince != nil || remotePanelDark || remoteVirtualDisplay)
+                : settings.keepDisplayAwake,
             reason: "Pusu keeps the system up"
         )
         // Karartma sırasında "kullanıcı etkin" bildirimi gönderilmez: macOS bunu tuşa basılmış
@@ -573,14 +902,15 @@ public final class SessionController: NSObject, ObservableObject {
             clock.remaining = value
             if value <= 0 {
                 stop(reason: .timer, endedAt: endDate)
-                onEvent?(.message(title: L("Süre doldu", "Time is up"), body: L("Pusu kapandı.", "Pusu turned off.")))
+                emit(.message(title: L("Süre doldu", "Time is up"), body: L("Pusu kapandı.", "Pusu turned off.")))
                 return
             }
         }
         tickCounter += 1
-        onEvent?(.tick(remaining))
+        emit(.tick(remaining))
         if tickCounter % 60 == 0 { history.heartbeat(at: now) }
         if tickCounter % 5 == 0 { writeRuntime() }
+        if remoteBlankActive { remoteTick(now: now) }
     }
 
     @objc private func batteryTick() {
@@ -661,7 +991,7 @@ public enum Diagnostics {
         lines.append("  on: \(session.isOn)")
         lines.append("  remaining: \(session.remaining.map { TimeText.countdown($0) } ?? "-")")
         lines.append("  lid mode: \(session.lidMode)")
-        lines.append("  VNC blackout: \(session.remoteBlankActive) (locked: \(session.remoteLocked))")
+        lines.append("  VNC mode: \(session.remoteBlankActive) (locked: \(session.remoteLocked), display asleep: \(session.remoteDisplaySlept), panel dark: \(session.remotePanelDark), virtual display: \(session.remoteVirtualDisplay), remote client: \(session.remoteClientConnected))")
         lines.append("  system assertion: \(session.assertions.isSystemHeld)")
         lines.append("  display assertion: \(session.assertions.isDisplayHeld)")
         lines.append("  user activity assertion: \(session.assertions.isUserActivityHeld)")
@@ -670,6 +1000,7 @@ public enum Diagnostics {
         lines.append("SETTINGS")
         lines.append("  keep display awake: \(settings.keepDisplayAwake)")
         lines.append("  keep session unlocked: \(settings.keepSessionUnlocked)")
+        lines.append("  remote access: \(settings.remoteKeepsDisplayOn ? "always on, dark" : "sleep until a connection"), lock: \(settings.remoteLockOnBlackout)")
         lines.append("  battery cutoff: \(percent(settings.batteryCutoffEnabled, settings.batteryCutoffPercent))")
         lines.append("  lid battery guard: \(percent(settings.lidBatteryFloorEnabled, settings.lidBatteryFloorPercent))")
         lines.append("  hotkey: \(settings.hotkeyPreset.rawValue)")
@@ -730,6 +1061,15 @@ public enum Diagnostics {
                 text.contains("InternalPreventDisplaySleep") {
                 lines.append("  \(text.trimmingCharacters(in: .whitespaces))")
             }
+        }
+        lines.append("")
+
+        lines.append("RECENT EVENTS")
+        let recent = EventLog.shared.tail(25)
+        if recent.isEmpty {
+            lines.append("  none")
+        } else {
+            for line in recent { lines.append("  \(line)") }
         }
         lines.append("")
 

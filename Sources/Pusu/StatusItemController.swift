@@ -316,7 +316,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func makeRemoteMenu() -> NSMenu {
         let menu = makeSubmenu()
         let sharing = cache.sharingState
-        let canRemote = cache.loaded && (sharing == .running || cache.remoteManagement)
+        let canRemote = cache.loaded && (sharing == .running || cache.remoteManagement || TernClientWatcher.isInstalled)
         if !cache.loaded {
             menu.addItem(disabledItem(L("Uzak erişim durumu yükleniyor…", "Checking remote access…")))
         } else if !canRemote {

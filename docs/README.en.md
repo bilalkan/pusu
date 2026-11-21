@@ -65,7 +65,7 @@
     </td>
     <td valign="top">
       <h3>🖥 Ready for remote access</h3>
-      One click keeps the system awake, turns the display off and locks the session, ready for Screen Sharing / VNC.
+      One click locks the session and turns the display off. When Screen Sharing or Tern connects, the display wakes up dark; with the lid closed, a virtual display takes over.
     </td>
   </tr>
   <tr>
@@ -116,7 +116,8 @@ pusu on 90          # stay awake for 90 minutes (also: 2h, 1h30m)
 pusu on             # use your default duration
 pusu off
 pusu lid on         # keep running with the lid closed
-pusu vnc            # display off + lock, ready for Screen Sharing
+pusu vnc            # lock + display off, ready for remote access
+pusu log            # recent events
 pusu status         # JSON, for scripts
 ```
 
@@ -153,7 +154,15 @@ Lid mode on battery uses more power and can get warm, so keep the lid battery gu
 
 <br>
 
-Turn on **System Settings › General › Sharing › Screen Sharing**, then choose **Remote Access (VNC) › Prepare for Remote Connection** (or run `pusu vnc`). Pusu keeps the system awake, turns the display off and, if you like, locks the session. Connect, and choose **Wake Display** (or `pusu wake`) when you're back. The display stays dark while you're away; Pusu doesn't nudge it awake.
+Turn on **System Settings › General › Sharing › Screen Sharing** (or use Tern), then choose **Remote Access (VNC) › Prepare for Remote Connection** (or run `pusu vnc`).
+
+- **Nobody connected:** the session locks and the display sleeps (about 0.7 W on an M2 MacBook Air).
+- **Screen Sharing connects:** macOS wakes the display itself.
+- **Tern connects:** the display wakes, but the Mac's panel and keyboard backlight stay dark while you see the lock screen as usual (about 2 W). If nobody looks at the screen for 30 seconds (terminal only), or when Tern disconnects, the Mac locks and the display sleeps again. Pusu reads Tern's own log file for this; nothing is sent anywhere.
+- **Lid closed** (with lid mode on): a virtual display is added for the remote connection, so you can see and unlock the lock screen (about 1 W).
+- **Back at the Mac:** touching its own keyboard or trackpad (even on the lock screen) or opening the lid ends the mode and brings the display back, with your brightness and keyboard backlight as they were.
+
+If you use another remote access app, turn on **Never sleep the display** in Settings: the display stays on but dark.
 
 </details>
 
@@ -168,13 +177,14 @@ pusu on [duration]       Turn on (60, 90m, 2h, 1h30m; default duration if empty)
 pusu off                 Turn off
 pusu toggle              Toggle on/off
 pusu status              Print the runtime state as JSON
-pusu vnc                 Prepare for remote access (blackout + optional lock)
+pusu vnc                 Prepare for remote access (display off + optional lock)
 pusu lid [on|off]        Turn lid mode on/off (no argument: toggle)
 pusu blackout            Turn the display off without locking
 pusu lock                Lock the screen
 pusu wake                Wake the display
 pusu settings            Open the Settings window
 pusu diagnostics         Print diagnostics
+pusu log [count|clear]   Print recent events (last 3 days)
 pusu install-helper      Install the privileged helper
 pusu uninstall-helper    Remove the privileged helper
 pusu version             Print the version

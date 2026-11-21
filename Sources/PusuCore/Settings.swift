@@ -56,6 +56,7 @@ public final class SettingsStore: ObservableObject {
         case notificationsEnabled = "pusu.notificationsEnabled"
         case showCountdown = "pusu.showCountdown"
         case remoteLockOnBlackout = "pusu.remoteLockOnBlackout"
+        case remoteKeepsDisplayOn = "pusu.remoteKeepsDisplayOn"
         case clickTogglesSession = "pusu.clickTogglesSession"
         case updateCheckEnabled = "pusu.updateCheckEnabled"
         case updateCheckAsked = "pusu.updateCheckAsked"
@@ -107,6 +108,12 @@ public final class SettingsStore: ObservableObject {
     }
     @Published public var remoteLockOnBlackout: Bool {
         didSet { save(remoteLockOnBlackout, .remoteLockOnBlackout); onChange?() }
+    }
+    /// Uzak erişimde ekran hiç uyutulmaz, yalnızca karartılır (parlaklık 0, siyah görüntü).
+    /// Kapalıysa (varsayılan) ekran bağlantı gelene kadar uyur; Apple Ekran Paylaşımı ve Tern
+    /// ekranı uyandırır. Diğer uzak erişim uygulamaları için açılır.
+    @Published public var remoteKeepsDisplayOn: Bool {
+        didSet { save(remoteKeepsDisplayOn, .remoteKeepsDisplayOn); onChange?() }
     }
     /// Menü çubuğu simgesine (sol) tıklamak Pusu'yu açıp kapatır; menü sağ tıkla açılır.
     /// Kapalıysa tıklama menüyü açar.
@@ -171,6 +178,7 @@ public final class SettingsStore: ObservableObject {
         self.notificationsEnabled = defaults.object(forKey: Key.notificationsEnabled.rawValue) as? Bool ?? true
         self.showCountdown = defaults.object(forKey: Key.showCountdown.rawValue) as? Bool ?? true
         self.remoteLockOnBlackout = defaults.object(forKey: Key.remoteLockOnBlackout.rawValue) as? Bool ?? true
+        self.remoteKeepsDisplayOn = defaults.object(forKey: Key.remoteKeepsDisplayOn.rawValue) as? Bool ?? false
         self.clickTogglesSession = defaults.object(forKey: Key.clickTogglesSession.rawValue) as? Bool ?? true
         self.updateCheckEnabled = defaults.object(forKey: Key.updateCheckEnabled.rawValue) as? Bool ?? false
 

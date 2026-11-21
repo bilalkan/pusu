@@ -205,7 +205,7 @@ func runSessionControllerChecks() {
         expect(c.remoteBlankActive, "remote: karartma aktif")
         expect(c.remoteLocked, "remote: kilitli")
         expectEqual(h.remote.lockCalls, 1, "remote: kilit çağrıldı")
-        expectEqual(h.remote.sleepCalls, 1, "remote: ekran uyutuldu")
+        expectEqual(h.remote.sleepCalls, 1, "remote: ekran bağlantıya kadar uyutuldu")
         expect(!h.assertions.isUserActivityHeld, "remote: kilitliyken kullanıcı etkinliği bırakıldı")
         expect(h.history.active?.usedRemote == true, "remote: geçmişte işaretli")
 

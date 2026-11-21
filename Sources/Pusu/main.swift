@@ -18,7 +18,11 @@ let singleInstance = SingleInstance()
 if !singleInstance.acquire() {
     // Başka bir Pusu zaten çalışıyor: komutu ona ilet ve çık.
     if let command = CLI.pendingCommand() {
-        CLI.post(command)
+        if !CLI.deliver(command) {
+            fputs(L("Pusu komutu almadı. Uygulamanın açık olduğundan emin olup tekrar deneyin.\n",
+                    "Pusu did not receive the command. Make sure the app is running and try again.\n"), stderr)
+            exit(1)
+        }
     }
     exit(0)
 }

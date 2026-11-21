@@ -50,6 +50,31 @@ public protocol RemoteControlling: AnyObject {
     func sleepDisplay() -> Bool
     @discardableResult
     func wakeDisplay() -> Bool
+    /// Ekranı uyutmadan karartır: parlaklık 0 ve siyah renk eğrisi. Ekran macOS için açık
+    /// kalır, böylece uzak erişim uygulamaları (Tern vb.) görüntüyü yakalayabilir.
+    /// Ekran ve klavye ışığının şu anki seviyesini hatırlar. Uzak erişim modu başlarken, ekran
+    /// uyutulmadan önce çağrılır: uyuyan ekranda macOS klavye ışığını zaten kıstığı için karartma
+    /// anında okunan değer yanlış olur.
+    func rememberPanelLevels()
+    /// Hatırlanan seviyeleri unutur (mod bittiğinde).
+    func forgetPanelLevels()
+    @discardableResult
+    func darkenPanel() -> Bool
+    /// Karartma sürerken her saniye çağrılır; macOS parlaklığı ya da renk eğrisini geri
+    /// getirdiyse (kilitlenme, uyanma, otomatik parlaklık) yeniden karartır.
+    func maintainDarkPanel()
+    /// Parlaklığı ve renk eğrisini karartmadan önceki haline döndürür.
+    func restorePanel()
+    /// Kapak kapalıyken uzak bağlantının görebileceği sanal ekranı açar.
+    @discardableResult
+    func showVirtualDisplay() -> Bool
+    func hideVirtualDisplay()
+    var virtualDisplayActive: Bool { get }
+    /// Ekranı şu an izleyen (yakalayan/paylaşan) biri var mı? (Tern Screen, Ekran Paylaşımı…)
+    func screenIsBeingWatched() -> Bool
+    /// Bu Mac'e bağlı bir klavye/trackpad/fareye en son ne zaman dokunuldu? Uzaktan gönderilen
+    /// olaylar (Tern, Ekran Paylaşımı) sayılmaz. Kilit ekranındayken de çalışır.
+    func lastLocalInputDate() -> Date?
     func screenSharingState(timeout: TimeInterval) -> ScreenSharingState
     func remoteManagementRunning(timeout: TimeInterval) -> Bool
 }

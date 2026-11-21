@@ -53,6 +53,11 @@ enum CLI {
             return true
         }
 
+        if first == "log" {
+            printEvents(Array(args.dropFirst()))
+            return true
+        }
+
         if let first, !first.hasPrefix("-"), CommandParser.parse(arguments) == nil {
             fputs(L("Bilinmeyen komut: \(first)\n", "Unknown command: \(first)\n"), stderr)
             fputs(L("Kullanım için: pusu help\n", "For usage: pusu help\n"), stderr)
@@ -80,7 +85,11 @@ enum CLI {
 
         if let command, appIsRunning() {
             waitUntilAppIsReady()
-            post(command)
+            if !deliver(command) {
+                fputs(L("Pusu komutu almadı. Uygulamanın açık olduğundan emin olup tekrar deneyin.\n",
+                        "Pusu did not receive the command. Make sure the app is running and try again.\n"), stderr)
+                exit(1)
+            }
             return true
         }
 
@@ -98,8 +107,23 @@ enum CLI {
         CommandParser.parse(CommandLine.arguments)
     }
 
-    static func post(_ command: PusuCommand) {
+    /// Komutu gönderir ve uygulamanın onayını bekler; gelmezse aynı kimlikle iki kez daha dener.
+    static func deliver(_ command: PusuCommand) -> Bool {
+        let id = UUID().uuidString
+        for _ in 0..<3 {
+            post(command, id: id)
+            let deadline = Date().addingTimeInterval(1.5)
+            while Date() < deadline {
+                if CommandDelivery.readAck() == id { return true }
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+        return false
+    }
+
+    static func post(_ command: PusuCommand, id: String? = nil) {
         var userInfo: [String: Any] = ["command": command.wireName]
+        if let id { userInfo["id"] = id }
         if let minutes = command.minutes {
             userInfo["minutes"] = minutes
         }
@@ -174,13 +198,14 @@ enum CLI {
           pusu off                 Kapat
           pusu toggle              Aç/kapat
           pusu status              Çalışma durumunu JSON olarak yazdır
-          pusu vnc                 Uzaktan bağlanmaya hazırla (karart + isteğe bağlı kilit)
+          pusu vnc                 Uzaktan bağlanmaya hazırla (ekranı kapat + isteğe bağlı kilit)
           pusu lid [on|off]        Kapak modunu aç/kapat (argümansız: değiştir)
           pusu blackout            Ekranı karart, kilitleme
           pusu lock                Ekranı kilitle
           pusu wake                Ekranı uyandır
           pusu settings            Ayarlar penceresini aç
           pusu diagnostics         Tanılama bilgisini yazdır
+          pusu log [sayı|clear]    Son olayları yazdır (son 3 gün; varsayılan 50 satır)
           pusu install-helper      Yönetici yardımcısını kur (parola sorar)
           pusu uninstall-helper    Yönetici yardımcısını kaldır
           pusu version             Sürüm
@@ -195,19 +220,43 @@ enum CLI {
           pusu off                 Turn off
           pusu toggle              Toggle on/off
           pusu status              Print the runtime state as JSON
-          pusu vnc                 Prepare for remote access (blackout + optional lock)
+          pusu vnc                 Prepare for remote access (display off + optional lock)
           pusu lid [on|off]        Turn lid mode on/off (no argument: toggle)
           pusu blackout            Turn the display off without locking
           pusu lock                Lock the screen
           pusu wake                Wake the display
           pusu settings            Open the Settings window
           pusu diagnostics         Print diagnostics
+          pusu log [count|clear]   Print recent events (last 3 days; 50 lines by default)
           pusu install-helper      Install the privileged helper (asks for your password)
           pusu uninstall-helper    Remove the privileged helper
           pusu version             Print the version
 
         URL scheme: pusu://on?minutes=60, pusu://off, pusu://toggle
         """)
+    }
+
+    private static func printEvents(_ arguments: [String]) {
+        let log = EventLog.shared
+        if arguments.first == "clear" {
+            log.clear()
+            print(L("Olay günlüğü temizlendi.", "Event log cleared."))
+            return
+        }
+        var count = 50
+        if let raw = arguments.first {
+            guard let value = Int(raw), (1...EventLog.maxEntries).contains(value) else {
+                fputs(L("Kullanım: pusu log [1-\(EventLog.maxEntries)|clear]\n", "Usage: pusu log [1-\(EventLog.maxEntries)|clear]\n"), stderr)
+                exit(64)
+            }
+            count = value
+        }
+        let lines = log.tail(count)
+        if lines.isEmpty {
+            print(L("Henüz kayıtlı olay yok.", "No events recorded yet."))
+            return
+        }
+        lines.forEach { print($0) }
     }
 
     private static func installHelper() {
@@ -283,6 +332,10 @@ enum CLI {
         print("")
         print("REMOTE ACCESS")
         print("screen sharing: \(RemoteController().screenSharingState().rawValue)")
+        print("")
+        print("RECENT EVENTS")
+        let recent = EventLog.shared.tail(25)
+        print(recent.isEmpty ? "none" : recent.joined(separator: "\n"))
     }
 }
 

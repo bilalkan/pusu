@@ -62,6 +62,26 @@ public enum PusuCommand: Equatable {
     }
 }
 
+/// CLI komutlarının teslim onayı. CLI her komuta bir kimlik ekler; uygulama komutu işleyince
+/// kimliği `command-ack` dosyasına yazar. Onay gelmezse CLI aynı kimlikle yeniden gönderir;
+/// uygulama aynı kimliği ikinci kez işlemez.
+public enum CommandDelivery {
+    /// Kimlik yalnızca UUID karakterlerinden oluşabilir (dosyaya yazılır).
+    public static func isValidID(_ id: String) -> Bool {
+        (8...64).contains(id.count) && id.allSatisfy { $0.isASCII && ($0.isHexDigit || $0 == "-") }
+    }
+
+    public static func writeAck(_ id: String, to url: URL = RuntimePaths.commandAck) {
+        guard isValidID(id) else { return }
+        try? Data(id.utf8).write(to: url, options: .atomic)
+    }
+
+    public static func readAck(from url: URL = RuntimePaths.commandAck) -> String? {
+        guard let data = try? Data(contentsOf: url), data.count <= 64 else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+}
+
 public enum CommandParser {
     /// `pusu on 90`, `pusu off`, eski `--on 90` bayrakları vb. `arguments[0]` program adıdır.
     public static func parse(_ arguments: [String]) -> PusuCommand? {
