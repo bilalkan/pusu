@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastCommandID: String?
     private var remoteModeStartedAt = Date.distantPast
     private var pendingCommand: PusuCommand?
+    private let helperWatch = HelperWatch(events: EventLog.shared)
+    private let helperWatchQueue = DispatchQueue(label: "local.kan.pusu.helper-watch", qos: .utility)
+    private var helperWatchTimer: Timer?
     private lazy var updates = UpdateMonitor(settings: settings, currentVersion: CLI.version) { [weak self] title, body in
         self?.notify(title, body)
     }
@@ -43,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             EventLog.shared.record("Display brightness restored after an unexpected quit")
         }
         observeSystemEvents()
+        startHelperWatch()
 
         session.onEvent = { [weak self] event in
             self?.handle(event: event)
@@ -365,7 +369,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        helperWatch.beginChange()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            defer { self?.helperWatch.endChange() }
             do {
                 try HelperInstaller.install(helperBinary: helperURL, expectedSHA256: AppBundle.helperSHA256, appBundlePath: AppBundle.url?.path)
                 EventLog.shared.record("Helper \(isUpdate ? "updated" : "installed") (version \(HelperProtocol.version))")
@@ -410,9 +416,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             session.stop(reason: .user)
         }
 
+        helperWatch.beginChange()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            defer { self?.helperWatch.endChange() }
             do {
                 try HelperInstaller.uninstall()
+                EventLog.shared.record("Helper removed (from Pusu)")
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .pusuHelperChanged, object: nil)
                     self?.notify(
@@ -791,6 +800,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Helper watch
+
+    /// Yardımcı Pusu dışında kaybolursa (ör. eski bir Homebrew cask'ı onu sildiyse) günlüğe yazar
+    /// ve bir kez bildirir. Açılışta, 5 dakikada bir ve uykudan uyanınca bakılır.
+    private func startHelperWatch() {
+        scheduleHelperCheck(after: 5)
+        let timer = Timer(timeInterval: HelperWatch.interval, repeats: true) { [weak self] _ in
+            self?.scheduleHelperCheck(after: 0)
+        }
+        timer.tolerance = 30
+        RunLoop.main.add(timer, forMode: .common)
+        helperWatchTimer = timer
+    }
+
+    private func scheduleHelperCheck(after delay: TimeInterval) {
+        helperWatchQueue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            let outcome = self.helperWatch.check()
+            DispatchQueue.main.async { self.handleHelperWatch(outcome) }
+        }
+    }
+
+    private func handleHelperWatch(_ outcome: HelperWatch.Outcome) {
+        switch outcome {
+        case .none:
+            break
+        case .needsConfirmation:
+            scheduleHelperCheck(after: HelperWatch.confirmDelay)
+        case .missing(let problem):
+            NotificationCenter.default.post(name: .pusuHelperChanged, object: nil)
+            switch problem {
+            case .removed:
+                notify(
+                    L("Yönetici yardımcısı kaldırılmış", "The privileged helper was removed"),
+                    L(
+                        "Kapak modu artık parola isteyecek. Ayarlar › Sistem'den yeniden kurabilirsiniz.",
+                        "Lid mode will ask for your password. You can reinstall it from Settings › System."
+                    )
+                )
+            case .notResponding:
+                notify(
+                    L("Yönetici yardımcısı yanıt vermiyor", "The privileged helper is not responding"),
+                    L(
+                        "Kapak modu parola isteyebilir. Ayarlar › Sistem'den yeniden kurmayı deneyin.",
+                        "Lid mode may ask for your password. Try reinstalling it from Settings › System."
+                    )
+                )
+            }
+        case .restored:
+            NotificationCenter.default.post(name: .pusuHelperChanged, object: nil)
+        }
+    }
+
     /// Ekran, kilit ve uyku olaylarını günlüğe yazar. Uzaktan bağlanılamadığında "o sırada ekran
     /// açık mıydı, oturum kilitli miydi?" sorusunu yanıtlamak için.
     private func observeSystemEvents() {
@@ -804,8 +866,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             (NSWorkspace.sessionDidBecomeActiveNotification, "User session became active"),
         ]
         for (name, text) in workspaceEvents {
-            let observer = workspace.addObserver(forName: name, object: nil, queue: .main) { _ in
+            let observer = workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 EventLog.shared.record(text)
+                if name == NSWorkspace.didWakeNotification {
+                    self?.scheduleHelperCheck(after: 10)
+                }
             }
             systemObservers.append((workspace, observer))
         }

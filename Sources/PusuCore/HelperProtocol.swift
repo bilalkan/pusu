@@ -328,6 +328,8 @@ public enum HelperInstaller {
             }
             throw HelperError.installFailed(result.failureDescription)
         }
+        // Bundan sonra yardımcı Pusu dışında kaybolursa uyarılır (HelperWatch).
+        HelperWatch.setExpected(true)
 
         for _ in 0..<30 {
             if HelperProtocol.isCurrent(HelperClient.ping()) { return }
@@ -349,6 +351,9 @@ public enum HelperInstaller {
         /bin/rm -f \(HelperProtocol.defaultSocketPath)
         /bin/rm -f \(HelperProtocol.logPath)
         """
+        // Kullanıcının kendi kaldırması uyarı üretmesin. İptal edilirse yardımcı hâlâ çalışır;
+        // bir sonraki kontrolde HelperWatch işareti yeniden yazar.
+        HelperWatch.setExpected(false)
         let result = Shell.runAsAdmin(script: script)
         guard result.succeeded else {
             if result.wasCancelled { throw HelperError.adminCancelled }

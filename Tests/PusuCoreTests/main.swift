@@ -302,6 +302,7 @@ runChecks("Event log") { runEventLogChecks() }
 runChecks("Remote mode") { runRemoteModeChecks() }
 runChecks("Tern watcher") { runTernWatcherChecks() }
 runChecks("Command delivery") { runCommandDeliveryChecks() }
+runChecks("Helper watch") { runHelperWatchChecks() }
 
 // MARK: - Summary
 

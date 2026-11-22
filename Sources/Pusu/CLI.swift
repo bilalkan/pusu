@@ -266,6 +266,7 @@ enum CLI {
         }
         do {
             try HelperInstaller.install(helperBinary: url, expectedSHA256: AppBundle.helperSHA256, appBundlePath: AppBundle.url?.path)
+            EventLog.shared.record("Helper installed from the command line (version \(HelperProtocol.version))")
             print(L("Yönetici yardımcısı kuruldu.", "Privileged helper installed."))
         } catch {
             fputs(L("Kurulum başarısız: \(error.localizedDescription)\n", "Install failed: \(error.localizedDescription)\n"), stderr)
@@ -276,6 +277,7 @@ enum CLI {
     private static func uninstallHelper() {
         do {
             try HelperInstaller.uninstall()
+            EventLog.shared.record("Helper removed from the command line")
             print(L("Yönetici yardımcısı kaldırıldı.", "Privileged helper removed."))
         } catch {
             fputs(L("Kaldırma başarısız: \(error.localizedDescription)\n", "Removal failed: \(error.localizedDescription)\n"), stderr)
