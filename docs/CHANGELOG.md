@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.6 — 2026-11-23
+
+- **Tern's Screen tab wakes the display.** A desktop Tern window with a terminal tab keeps one connection open for hours, and opening the Screen tab reuses it, so Pusu never saw a new connection: the display stayed asleep and Tern said "This Mac has no display to share". In remote access mode Pusu now also notices when Tern asks for the screen and wakes the display dark, the same way as for a new connection. It follows macOS's own log for this with a narrow filter while the mode is on; no admin rights, nothing is sent anywhere.
+- **Warning when the helper disappears.** If the privileged helper is removed outside Pusu (for example by an old Homebrew cask during an upgrade), Pusu records it in the event log and shows one notification, so lid mode doesn't fail later with an unexpected password prompt. Installing or removing the helper from Pusu itself never warns.
+- The display assertion is now named "Pusu keeps the display on" in `pmset -g assertions`, separate from the system one.
+
 ## 1.0.5 — 2026-11-21
 
 Remote access mode, rebuilt after testing with Screen Sharing and with Tern from a phone.
