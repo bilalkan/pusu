@@ -139,6 +139,7 @@ final class FakeRemote: RemoteControlling {
 
 final class FakeRemoteClients: RemoteClientMonitoring {
     var onClientEvent: ((Bool) -> Void)?
+    var onScreenRequest: (() -> Void)?
     private(set) var count = 0
     var isConnected: Bool { count > 0 }
     private(set) var started = false
@@ -147,6 +148,9 @@ final class FakeRemoteClients: RemoteClientMonitoring {
     func attach() {
         count += 1
         if started { onClientEvent?(true) }
+    }
+    func requestScreen() {
+        if started { onScreenRequest?() }
     }
     func detach() {
         guard count > 0 else { return }

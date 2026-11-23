@@ -6,6 +6,8 @@ public protocol RemoteClientMonitoring: AnyObject {
     var isConnected: Bool { get }
     /// Her yeni bağlantıda (`true`) ve her ayrılmada (`false`) ana kuyrukta çağrılır.
     var onClientEvent: ((Bool) -> Void)? { get set }
+    /// Uzaktaki uygulama ekranı paylaşmak istedi (bağlantı zaten açık olsa bile). Ana kuyrukta.
+    var onScreenRequest: (() -> Void)? { get set }
     func start()
     func stop()
 }
@@ -39,6 +41,7 @@ public final class TernClientWatcher: RemoteClientMonitoring {
     static let backlogBytes: UInt64 = 256 * 1024
 
     public var onClientEvent: ((Bool) -> Void)?
+    public var onScreenRequest: (() -> Void)?
     /// Tanılama arka planda okuyabildiği için kilitli.
     public var isConnected: Bool {
         clientsLock.lock()
@@ -58,10 +61,17 @@ public final class TernClientWatcher: RemoteClientMonitoring {
     private var fileID: UInt64?
     private var partialLine = ""
     private var timer: Timer?
+    private let watchScreenRequests: Bool
+    private var screenStream: Process?
 
-    public init(url: URL = TernClientWatcher.defaultLogURL, pollInterval: TimeInterval = 1) {
+    public init(
+        url: URL = TernClientWatcher.defaultLogURL,
+        pollInterval: TimeInterval = 1,
+        watchScreenRequests: Bool = true
+    ) {
         self.url = url
         self.pollInterval = pollInterval
+        self.watchScreenRequests = watchScreenRequests
     }
 
     public func start() {
@@ -77,11 +87,13 @@ public final class TernClientWatcher: RemoteClientMonitoring {
         let timer = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in self?.poll() }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        startScreenRequestStream()
     }
 
     public func stop() {
         timer?.invalidate()
         timer = nil
+        stopScreenRequestStream()
         clients = []
         partialLine = ""
     }
@@ -132,6 +144,69 @@ public final class TernClientWatcher: RemoteClientMonitoring {
         return Int(digits)
     }
 
+    // MARK: - Ekran isteği
+
+    /// Tern ekranı paylaşmak istediğinde ScreenCaptureKit'ten ekran listesini ister; macOS bunu
+    /// birleşik günlüğe yazar. Açık bir terminal bağlantısı üzerinden Screen sekmesi açılınca Tern
+    /// günlüğüne yeni bağlantı satırı düşmez, uyuyan ekranda da liste boş döner ("This Mac has no
+    /// display to share"). Bu satır, ekranı karanlık uyandırmak için tek işarettir.
+    public static let screenRequestPredicate =
+        #"processImagePath CONTAINS "/Tern.app/" AND senderImagePath ENDSWITH "/ScreenCaptureKit" AND eventMessage CONTAINS "getShareableContent""#
+
+    /// `log stream --style ndjson` satırı Tern'in ekran isteği mi?
+    public static func isScreenRequest(_ line: String) -> Bool {
+        line.hasPrefix("{") && line.contains("getShareableContent") && line.contains("Tern.app")
+    }
+
+    /// `log stream` yönetici yetkisi istemez; yalnızca yukarıdaki dar süzgeçle, uzak erişim modu
+    /// açıkken çalışır. Kapanırsa (ör. logd yeniden başladı) birkaç saniye sonra yeniden başlar.
+    private func startScreenRequestStream() {
+        guard watchScreenRequests, screenStream == nil, timer != nil else { return }
+        let logTool = "/usr/bin/log"
+        guard FileManager.default.isExecutableFile(atPath: logTool) else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: logTool)
+        process.arguments = ["stream", "--style", "ndjson", "--predicate", Self.screenRequestPredicate]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        let lines = LineSplitter()
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                return
+            }
+            guard lines.append(data).contains(where: Self.isScreenRequest) else { return }
+            DispatchQueue.main.async {
+                guard let self, self.screenStream != nil else { return }
+                self.onScreenRequest?()
+            }
+        }
+        process.terminationHandler = { [weak self] ended in
+            DispatchQueue.main.async {
+                guard let self, self.screenStream === ended else { return }
+                self.screenStream = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                    self?.startScreenRequestStream()
+                }
+            }
+        }
+        do {
+            try process.run()
+            screenStream = process
+        } catch {
+            pipe.fileHandleForReading.readabilityHandler = nil
+        }
+    }
+
+    private func stopScreenRequestStream() {
+        guard let process = screenStream else { return }
+        screenStream = nil
+        if process.isRunning { process.terminate() }
+    }
+
     // MARK: - Dosya
 
     private func readNewData(notify: Bool, skipFirstPartialLine: Bool) {
@@ -175,5 +250,28 @@ public final class TernClientWatcher: RemoteClientMonitoring {
 
     private func currentFileID() -> UInt64? {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.systemFileNumber] as? NSNumber)?.uint64Value
+    }
+}
+
+/// Parça parça gelen çıktıyı satırlara böler (okuma kuyruğunda kullanılır).
+public final class LineSplitter {
+    private var pending = Data()
+    private let lock = NSLock()
+
+    /// Tamamlanan satırları döndürür; yarım satır bir sonraki parçayı bekler.
+    public init() {}
+
+    public func append(_ data: Data) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        pending.append(data)
+        var lines: [String] = []
+        while let newline = pending.firstIndex(of: 0x0A) {
+            lines.append(String(decoding: pending[pending.startIndex..<newline], as: UTF8.self))
+            pending.removeSubrange(pending.startIndex...newline)
+        }
+        // Tek satır bu kadar uzun olmaz; bozuk çıktıyı bellekte biriktirme.
+        if pending.count > 65_536 { pending.removeAll() }
+        return lines
     }
 }

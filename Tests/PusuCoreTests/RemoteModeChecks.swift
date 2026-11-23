@@ -297,6 +297,41 @@ func runRemoteModeChecks() {
     expect(!RemoteController.isLocalInputAssertion("com.apple.iohideventsystem.queue.tickle serviceID:0 service:(null) product:(null) eventType:29"), "kayıt: aygıtsız sayılmaz")
     expect(!RemoteController.isLocalInputAssertion("Pusu keeps the session unlocked"), "kayıt: Pusu'nun kendi kaydı sayılmaz")
 
+    // Açık bağlantı üzerinden ekran isteği: uyuyan ekran karanlık uyanır
+    do {
+        let h = SessionHarness(battery: battery(80))
+        let c = h.controller!
+        h.clients.requestScreen()
+        expectEqual(h.remote.wakeCalls, 0, "ekran isteği: mod kapalıyken yok sayılır")
+
+        c.enterRemoteMode(lock: true)
+        h.clients.attach()
+        let start = Date()
+        c.processTick(now: start.addingTimeInterval(31))
+        expect(c.remoteDisplaySlept, "ekran isteği: bağlantı açık, ekran yeniden uyudu")
+        expectEqual(h.remote.wakeCalls, 1, "ekran isteği: bağlantıda bir kez uyandı")
+
+        h.clients.requestScreen()
+        expect(c.remotePanelDark, "ekran isteği: panel karanlık")
+        expectEqual(h.remote.wakeCalls, 2, "ekran isteği: ekran uyandı")
+        expect(h.assertions.isDisplayHeld, "ekran isteği: ekran açık tutulur")
+        expect(h.eventLog.messages.contains("Tern asked to share the screen"), "ekran isteği: günlük")
+
+        // Tekrarlanan istek (Try again) süreyi baştan başlatır, yeniden uyandırmaz
+        let wakes = h.remote.wakeCalls
+        h.clients.requestScreen()
+        expectEqual(h.remote.wakeCalls, wakes, "ekran isteği: zaten açıkken yeniden uyandırmaz")
+        c.processTick(now: Date().addingTimeInterval(20))
+        expect(c.remotePanelDark, "ekran isteği: süre yeniden başladı")
+        c.processTick(now: Date().addingTimeInterval(31))
+        expect(!c.remotePanelDark, "ekran isteği: izlenmezse yine uyur")
+
+        c.exitRemoteMode()
+        h.clients.requestScreen()
+        expect(!c.remotePanelDark, "ekran isteği: mod bitince yok sayılır")
+        h.tearDown()
+    }
+
     // Mac başında tıklama: mod biter
     do {
         let h = SessionHarness(battery: battery(80))
@@ -325,6 +360,17 @@ func runTernWatcherChecks() {
     expectNil(TernClientWatcher.parse("daemon client attached id=abc kind=Remote"), "tern: bozuk numara")
     expectNil(TernClientWatcher.parse("başka bir satır"), "tern: ilgisiz satır")
 
+    // Ekran isteği (`log stream --style ndjson` satırı, gerçek biçimden kısaltıldı)
+    let request = #"{"processImagePath":"\/Applications\/Tern.app\/Contents\/MacOS\/tern","senderImagePath":"\/System\/Library\/Frameworks\/ScreenCaptureKit.framework\/Versions\/A\/ScreenCaptureKit","processID":54885,"eventMessage":" [INFO] +[SCShareableContent getShareableContentWithCompletionHandler:]:57 "}"#
+    let otherApp = #"{"processImagePath":"\/Applications\/Other.app\/Contents\/MacOS\/other","eventMessage":" [INFO] +[SCShareableContent getShareableContentWithCompletionHandler:]:57 "}"#
+    expect(TernClientWatcher.isScreenRequest(request), "tern ekran: istek tanındı")
+    expect(!TernClientWatcher.isScreenRequest(otherApp), "tern ekran: başka uygulama sayılmaz")
+    expect(!TernClientWatcher.isScreenRequest(#"Filtering the log data using "getShareableContent Tern.app""#), "tern ekran: başlık satırı sayılmaz")
+
+    let splitter = LineSplitter()
+    expectEqual(splitter.append(Data("ab".utf8)), [String](), "satır bölücü: yarım satır beklenir")
+    expectEqual(splitter.append(Data("c\nde\nf".utf8)), ["abc", "de"], "satır bölücü: tamamlanan satırlar")
+
     let clients = TernClientWatcher.apply([.attached(1), .attached(2), .detached(1)], to: [])
     expectEqual(clients, [2], "tern: açık bağlantılar")
     expectEqual(TernClientWatcher.apply([.daemonStarted], to: [2, 3]), [], "tern: servis yeniden başlayınca sıfırlanır")
@@ -341,7 +387,7 @@ func runTernWatcherChecks() {
         try? handle.close()
     }
     FileManager.default.createFile(atPath: url.path, contents: (attached + "\n").data(using: .utf8))
-    let watcher = TernClientWatcher(url: url, pollInterval: 60)
+    let watcher = TernClientWatcher(url: url, pollInterval: 60, watchScreenRequests: false)
     var changes: [Bool] = []
     watcher.onClientEvent = { changes.append($0) }
     watcher.start()
@@ -374,7 +420,7 @@ func runTernWatcherChecks() {
     expectEqual(changes, [false, true, false], "tern dosya: bütün değişiklikler")
 
     // Dosya yoksa sessizce çalışır
-    let missing = TernClientWatcher(url: directory.appendingPathComponent("yok.log"), pollInterval: 60)
+    let missing = TernClientWatcher(url: directory.appendingPathComponent("yok.log"), pollInterval: 60, watchScreenRequests: false)
     missing.start()
     missing.poll()
     expect(!missing.isConnected, "tern: dosya yoksa bağlantı yok")

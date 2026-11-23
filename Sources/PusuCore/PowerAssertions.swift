@@ -42,7 +42,8 @@ public final class PowerAssertions: PowerAsserting {
             let result = IOPMAssertionCreateWithName(
                 kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
                 IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                reason as CFString,
+                // Kendi adı: `pmset -g assertions` çıktısında sistem kaydından ayırt edilsin.
+                "Pusu keeps the display on" as CFString,
                 &id
             )
             if result == kIOReturnSuccess {

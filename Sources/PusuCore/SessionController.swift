@@ -456,6 +456,9 @@ public final class SessionController: NSObject, ObservableObject {
         remoteClients?.onClientEvent = { [weak self] attached in
             self?.remoteClientEvent(attached: attached)
         }
+        remoteClients?.onScreenRequest = { [weak self] in
+            self?.remoteScreenRequested()
+        }
         remoteClients?.start()
 
         lastLidClosed = lidClosedReader()
@@ -584,6 +587,20 @@ public final class SessionController: NSObject, ObservableObject {
         }
     }
 
+    /// Tern ekranı paylaşmak istedi. Bağlantı zaten açıkken (ör. terminal sekmesi) Screen
+    /// açılınca yeni bağlantı satırı düşmez; uyuyan ekranı karanlık uyandır ki Tern bir sonraki
+    /// denemede ekranı bulsun. Ekran zaten karanlık açıksa 30 sn'lik süre baştan başlar.
+    public func remoteScreenRequested() {
+        guard remoteBlankActive, !usesVirtualDisplay, !remoteKeepsDisplayAwake else { return }
+        if darkSince == nil {
+            log("Tern asked to share the screen")
+            viewedSinceWake = remote.screenIsBeingWatched()
+            wakeDark(reason: "Screen requested")
+        } else {
+            darkSince = Date()
+        }
+    }
+
     /// Her saniye: karartmayı koru, izlenmeyi ve kapağı takip et.
     private func remoteTick(now: Date) {
         if let input = remote.lastLocalInputDate(), input > localInputBaseline {
@@ -675,6 +692,7 @@ public final class SessionController: NSObject, ObservableObject {
     private func teardownRemoteMode() {
         remoteClients?.stop()
         remoteClients?.onClientEvent = nil
+        remoteClients?.onScreenRequest = nil
         if darkPending { remote.restorePanel() }
         darkPending = false
         darkFailureLogged = false
