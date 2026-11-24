@@ -190,6 +190,12 @@ public final class SessionController: NSObject, ObservableObject {
     private var darkFailureLogged = false
     private var lastViewedAt: Date?
     private var viewedSinceWake = false
+    /// Tern ayrıldıktan sonra ekranın uyutulacağı an (hemen yeniden bağlanırsa iptal edilir).
+    private var pendingIdleAt: Date?
+    /// Son bağlantı anları: art arda bağlanıp kopan istemciyi tanımak için.
+    private var recentAttaches: [Date] = []
+    /// Art arda bağlanıp kopan Tern'in bağlantı olayları bu ana kadar yok sayılır.
+    private var clientEventsIgnoredUntil: Date?
     @Published public private(set) var lastError: String?
 
     public var onEvent: ((PusuEvent) -> Void)?
@@ -574,17 +580,48 @@ public final class SessionController: NSObject, ObservableObject {
         writeRuntime()
     }
 
-    private func remoteClientEvent(attached: Bool) {
+    /// Ayrılmadan sonra ekranı uyutmadan önce beklenen süre: Tern yeniden başlarken ya da ağ
+    /// değişirken bağlantı bir an kopup geri gelir; ekran her seferinde uyuyup kilitlenmesin.
+    public static let remoteDetachGrace: TimeInterval = 5
+    /// Bu süre içinde bu kadar yeni bağlantı gelirse istemci "art arda bağlanıp kopuyor" sayılır
+    /// (ör. Tern güncellenince eski uzak sunucu saniyede bir bağlanıp atılıyor).
+    public static let remoteFlapWindow: TimeInterval = 20
+    public static let remoteFlapLimit = 4
+    /// Art arda bağlanıp kopan istemcinin olaylarının yok sayılacağı süre.
+    public static let remoteFlapIgnore: TimeInterval = 5 * 60
+
+    private func remoteClientEvent(attached: Bool, now: Date = Date()) {
         guard remoteBlankActive else { return }
+        if let until = clientEventsIgnoredUntil, now < until { return }
+        clientEventsIgnoredUntil = nil
+        if attached {
+            recentAttaches = recentAttaches.filter { now.timeIntervalSince($0) < Self.remoteFlapWindow } + [now]
+            if recentAttaches.count >= Self.remoteFlapLimit {
+                // Ekranı her olayda uyutup uyandırmak hem ekranı yanıp söndürür hem de ana
+                // kuyruğu tıkar (Mac başındaki kişinin dokunuşu bile işlenemez). Bir süre dinleme.
+                recentAttaches = []
+                pendingIdleAt = nil
+                clientEventsIgnoredUntil = now.addingTimeInterval(Self.remoteFlapIgnore)
+                log("Tern keeps reconnecting; ignoring its connections for 5 minutes")
+                return
+            }
+        }
         log(attached ? "Remote client connected (Tern)" : "Remote client disconnected (Tern)")
         guard !usesVirtualDisplay, !remoteKeepsDisplayAwake else { return }
         if attached {
+            pendingIdleAt = nil
             // Yeni bağlantı: ekranı karanlık uyandır, kimse izlemezse 30 sn sonra yeniden uyut.
-            viewedSinceWake = remote.screenIsBeingWatched()
+            if darkSince == nil { viewedSinceWake = remote.screenIsBeingWatched() }
             wakeDark(reason: "Remote client connected")
-        } else if darkSince != nil, !remote.screenIsBeingWatched() {
-            goIdle(relock: true)
+        } else if darkSince != nil {
+            // Hemen uyutma: bağlantı birkaç saniye içinde geri gelebilir.
+            pendingIdleAt = now.addingTimeInterval(Self.remoteDetachGrace)
         }
+    }
+
+    /// Testler için: Tern bağlantı olayını belirli bir anda işle.
+    public func handleRemoteClientEvent(attached: Bool, now: Date) {
+        remoteClientEvent(attached: attached, now: now)
     }
 
     /// Tern ekranı paylaşmak istedi. Bağlantı zaten açıkken (ör. terminal sekmesi) Screen
@@ -622,6 +659,14 @@ public final class SessionController: NSObject, ObservableObject {
             // Kapak modu sonradan açıldıysa uyuyan ekranı karanlık uyandır.
             if darkSince == nil { wakeDark(reason: "Lid mode is on") }
             return
+        }
+
+        if let idleAt = pendingIdleAt, now >= idleAt {
+            pendingIdleAt = nil
+            if darkSince != nil, remoteClients?.isConnected != true, !remote.screenIsBeingWatched() {
+                goIdle(relock: true)
+                return
+            }
         }
 
         if remote.screenIsBeingWatched() {
@@ -699,6 +744,9 @@ public final class SessionController: NSObject, ObservableObject {
         darkSince = nil
         lastViewedAt = nil
         viewedSinceWake = false
+        pendingIdleAt = nil
+        recentAttaches = []
+        clientEventsIgnoredUntil = nil
         restorePanelIfNeeded()
         if remote.virtualDisplayActive {
             remote.hideVirtualDisplay()

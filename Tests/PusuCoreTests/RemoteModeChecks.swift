@@ -42,8 +42,14 @@ func runRemoteModeChecks() {
         expect(c.remotePanelDark, "vnc: izlendikten sonra 2 dk izlenmese de karanlık açık")
         expect(h.remote.maintainCalls >= 2, "vnc: karartma korunuyor")
 
-        // Tern ayrılınca hemen uyur
+        // Tern ayrılınca kısa bir beklemeden sonra uyur
+        // (İlk bağlantı hâlâ açık: biri açık kaldıkça uyutulmaz.)
         h.clients.detach()
+        c.processTick(now: Date().addingTimeInterval(SessionController.remoteDetachGrace + 1))
+        expect(c.remotePanelDark, "vnc: bir bağlantı açıkken uyutulmaz")
+        h.clients.detach()
+        expect(c.remotePanelDark, "vnc: ayrılır ayrılmaz uyutulmaz")
+        c.processTick(now: Date().addingTimeInterval(SessionController.remoteDetachGrace + 1))
         expect(!c.remotePanelDark, "vnc: ayrılınca karartma bitti")
         expectEqual(h.remote.sleepCalls, 3, "vnc: ayrılınca uyutuldu")
 
@@ -159,6 +165,7 @@ func runRemoteModeChecks() {
         c.enterRemoteMode(lock: true)
         h.clients.attach()
         h.clients.detach()
+        c.processTick(now: Date().addingTimeInterval(SessionController.remoteDetachGrace + 1))
         expectEqual(h.remote.sleepCalls, 2, "bekleyen karartma: ayrılınca uyutuldu")
         expectEqual(h.remote.restoreCalls, 1, "bekleyen karartma: kaydedilen parlaklık geri yüklendi")
         c.exitRemoteMode()
@@ -296,6 +303,50 @@ func runRemoteModeChecks() {
     expect(!RemoteController.isLocalInputAssertion("com.apple.iohideventsystem.queue.tickle.nxevent service:IOHIDSystem pid:36503 process:tern"), "kayıt: Tern sayılmaz")
     expect(!RemoteController.isLocalInputAssertion("com.apple.iohideventsystem.queue.tickle serviceID:0 service:(null) product:(null) eventType:29"), "kayıt: aygıtsız sayılmaz")
     expect(!RemoteController.isLocalInputAssertion("Pusu keeps the session unlocked"), "kayıt: Pusu'nun kendi kaydı sayılmaz")
+
+    // Bağlantı bir an kopup geri gelirse ekran uyumaz, kilitlenmez
+    do {
+        let h = SessionHarness(battery: battery(80))
+        let c = h.controller!
+        c.enterRemoteMode(lock: true)
+        h.clients.attach()
+        h.remote.unlock()
+        h.clients.detach()
+        h.clients.attach()
+        c.processTick(now: Date().addingTimeInterval(SessionController.remoteDetachGrace + 1))
+        expect(c.remotePanelDark, "kısa kopma: ekran karanlık açık kaldı")
+        expectEqual(h.remote.sleepCalls, 1, "kısa kopma: yeniden uyutulmadı")
+        expectEqual(h.remote.lockCalls, 1, "kısa kopma: yeniden kilitlenmedi")
+        c.exitRemoteMode()
+        h.tearDown()
+    }
+
+    // Art arda bağlanıp kopan istemci: ekran yanıp sönmez, olaylar bir süre yok sayılır
+    do {
+        let h = SessionHarness(battery: battery(80))
+        let c = h.controller!
+        c.enterRemoteMode(lock: true)
+        let start = Date()
+        var t = start
+        for _ in 0..<10 {
+            c.handleRemoteClientEvent(attached: true, now: t)
+            c.handleRemoteClientEvent(attached: false, now: t.addingTimeInterval(0.4))
+            t = t.addingTimeInterval(1.5)
+        }
+        expectEqual(h.remote.wakeCalls, 1, "döngü: ekran bir kez uyandı")
+        expectEqual(h.remote.sleepCalls, 1, "döngü: arada uyutulmadı")
+        expectEqual(h.eventLog.messages.filter { $0.hasPrefix("Tern keeps reconnecting") }.count, 1, "döngü: bir kez günlüğe yazıldı")
+        // Yok sayma sürerken yeni bağlantı ekranı uyandırmaz
+        c.handleRemoteClientEvent(attached: true, now: start.addingTimeInterval(60))
+        expectEqual(h.remote.wakeCalls, 1, "döngü: yok sayılırken uyandırmaz")
+        // Süre bitince yeniden dinlenir
+        c.handleRemoteClientEvent(attached: true, now: start.addingTimeInterval(SessionController.remoteFlapIgnore + 30))
+        expect(c.remotePanelDark, "döngü: süre bitince bağlantı yine uyandırır")
+        // Yerel dokunuş her zaman modu bitirir
+        c.localInputDetected()
+        expect(!c.remoteBlankActive, "döngü: Mac başındaki kişi modu bitirir")
+        h.tearDown()
+    }
 
     // Açık bağlantı üzerinden ekran isteği: uyuyan ekran karanlık uyanır
     do {
