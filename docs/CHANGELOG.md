@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.7 — 2026-11-24
+
+- **No more blinking display when Tern keeps reconnecting.** After a Tern update, its old remote server can keep connecting and dropping every second or so. In remote access mode Pusu used to wake the display on every connect and put it to sleep (and relock) on every disconnect, so the display blinked, the screen relocked right after being unlocked, and Pusu could stop responding. Now Pusu waits 5 seconds after a disconnect before putting the display to sleep (and doesn't while another connection is open), and a client that connects four times within 20 seconds is ignored for 5 minutes. Touching the Mac's own keyboard or trackpad still ends remote access mode right away.
+
 ## 1.0.6 — 2026-11-23
 
 - **Tern's Screen tab wakes the display.** A desktop Tern window with a terminal tab keeps one connection open for hours, and opening the Screen tab reuses it, so Pusu never saw a new connection: the display stayed asleep and Tern said "This Mac has no display to share". In remote access mode Pusu now also notices when Tern asks for the screen and wakes the display dark, the same way as for a new connection. It follows macOS's own log for this with a narrow filter while the mode is on; no admin rights, nothing is sent anywhere.
