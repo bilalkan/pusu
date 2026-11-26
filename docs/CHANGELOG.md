@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Permissions are remembered across updates.** Pusu is now signed with its own fixed certificate instead of a new ad-hoc signature for every build, so macOS recognizes each update as the same app. The input permission for "Keep apps active" (and any other permission you give Pusu) is asked once and kept. Updating from 1.0.8 asks one last time.
+- Turning on "Keep apps active" explains the permission and shows macOS's prompt right away, instead of at a random moment a minute later.
+- If you allowed "Keep apps active" in 1.0.8, macOS keeps that old permission tied to the old signature: the switch in Settings looks on, but it no longer works and macOS doesn't ask again. Pusu notices this once, clears only its own old permission entry and asks again.
+
 ## 1.0.8 — 2026-11-26
 
 - **One-click updates.** When a new version is out, "New version…" in the menu (or `pusu update`) shows the release notes and an Install button: Pusu downloads the new version from GitHub, checks its signature, replaces itself and relaunches. A session that was on keeps going with the same end time. The daily check and its privacy are unchanged; nothing is downloaded until you click Install. Homebrew installs update the same way (the cask now says `auto_updates`). Updates use [Sparkle](https://sparkle-project.org).

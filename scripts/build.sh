@@ -8,7 +8,11 @@
 #   PUSU_ICON_CONCEPT=A|B       Uygulama ikonu (varsayılan A)
 #   PUSU_UNIVERSAL=0            Release'i yalnızca yerel mimari için derle
 #   PUSU_SIGN_IDENTITY="Developer ID Application: …"
-#                               Verilirse hardened runtime ile imzalar; yoksa ad-hoc imza.
+#                               Verilirse hardened runtime ile imzalar.
+#   PUSU_SELF_SIGN_NAME         Kalıcı (kendinden imzalı) sertifikanın adı; varsayılan
+#                               "Pusu Code Signing". Anahtar zincirinde varsa onunla, yoksa ad-hoc
+#                               imzalanır. Sabit imza sayesinde macOS verilen izinleri (ör. olay
+#                               gönderme) güncellemelerde hatırlar; ad-hoc imza her derlemede değişir.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -70,10 +74,21 @@ chmod +x "$APP/Contents/MacOS/Pusu" "$APP/Contents/Resources/pusu-helper"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
 # İç içe kodu önce, paketi en son imzala (--deep kullanılmaz).
+SELF_SIGN_NAME="${PUSU_SELF_SIGN_NAME:-Pusu Code Signing}"
+# Güvenilir işaretlenmemiş sertifika da imzalayabilir; SHA-1 ile seçilir (-v kullanılmaz).
+SELF_SIGN_HASH="$(security find-identity -p codesigning 2>/dev/null \
+    | awk -v name="\"$SELF_SIGN_NAME\"" 'index($0, name) {print $2; exit}')"
 if [ -n "${PUSU_SIGN_IDENTITY:-}" ]; then
     SIGN_ARGS=(--force --options runtime --timestamp --sign "$PUSU_SIGN_IDENTITY")
+    SIGNED_WITH="$PUSU_SIGN_IDENTITY"
+elif [ -n "$SELF_SIGN_HASH" ]; then
+    # Hardened runtime yok: kitaplık doğrulaması ekip kimliği ister, kendinden imzalı
+    # sertifikada ekip kimliği olmadığı için Sparkle.framework yüklenemezdi.
+    SIGN_ARGS=(--force --timestamp=none --sign "$SELF_SIGN_HASH")
+    SIGNED_WITH="$SELF_SIGN_NAME"
 else
     SIGN_ARGS=(--force --sign - --timestamp=none)
+    SIGNED_WITH="ad-hoc"
 fi
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 codesign "${SIGN_ARGS[@]}" "$SPARKLE/Versions/B/Autoupdate"
@@ -88,4 +103,4 @@ codesign --verify --strict --deep "$APP"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 ARCHS="$(lipo -archs "$APP/Contents/MacOS/Pusu")"
-echo "$APP · v$VERSION · $ARCHS · ikon $CONCEPT"
+echo "$APP · v$VERSION · $ARCHS · ikon $CONCEPT · imza: $SIGNED_WITH"

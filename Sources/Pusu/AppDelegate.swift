@@ -105,6 +105,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        // "Uygulamaları aktif tut" açılınca macOS'in izin penceresi rastgele bir anda değil,
+        // hemen ve bir açıklamayla çıksın (Caffeine de aynı anda sorar). Sabit imza sayesinde
+        // verilen karar güncellemelerde hatırlanır.
+        settings.$keepAppsActive
+            .dropFirst()
+            .removeDuplicates()
+            .filter { $0 }
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.explainAppActivityPermission() }
+            }
+            .store(in: &cancellables)
+
         settings.$launchAtLogin
             .dropFirst()
             .removeDuplicates()
@@ -172,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             // Güncelleme izni bir kez sorulur (yeni kurulumda karşılamadan hemen sonra).
             self.updates.askForPermissionIfNeeded()
+            self.renewInputPermissionIfNeeded()
             self.updates.start()
         }
 
@@ -239,6 +252,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DistributedNotificationCenter.default().removeObserver(commandObserver)
         }
         hotKeyManager?.unregister()
+    }
+
+    /// 1.0.8'e kadar Pusu her derlemede değişen ad-hoc imzayla dağıtıldı. O sürümlerde verilen
+    /// izin kaydı, sabit sertifikalı sürümün imzasıyla eşleşmez: macOS ne izin verir ne de yeniden
+    /// sorar, Ayarlar'daki anahtar açık görünse de çalışmaz. Bir kereye mahsus Pusu'nun kendi
+    /// kayıtları sıfırlanır ve izin yeniden istenir. (tccutil yalnızca bu uygulamanın kaydını siler.)
+    private func renewInputPermissionIfNeeded() {
+        let key = "pusu.inputPermissionRenewed"
+        guard settings.keepAppsActive, !UserDefaults.standard.bool(forKey: key),
+              let bundleID = Bundle.main.bundleIdentifier
+        else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        guard !CGPreflightPostEventAccess(), !AXIsProcessTrusted() else { return }
+        for service in ["PostEvent", "Accessibility"] {
+            _ = Shell.run("/usr/bin/tccutil", ["reset", service, bundleID], timeout: 10)
+        }
+        EventLog.shared.record("Keep apps active: reset this app's old input permission record; asking again")
+        explainAppActivityPermission()
+    }
+
+    private func explainAppActivityPermission() {
+        // Erişilebilirlik izni olay göndermeyi de kapsar; ikisinden biri varsa sorulacak bir şey yok.
+        guard !CGPreflightPostEventAccess(), !AXIsProcessTrusted() else { return }
+        AppActivation.activate()
+        let alert = NSAlert()
+        alert.messageText = L("macOS bir kez izin soracak", "macOS will ask for permission once")
+        alert.informativeText = L(
+            "Pusu boştayken imleci yerinde oynatır. macOS bunun için \"Pusu, bu Mac'i denetlemek istiyor\" diye sorar; izin verirseniz Teams gibi uygulamalar sizi etkin görür. Pusu başka hiçbir tıklama ya da tuş göndermez. İzni Gizlilik ve Güvenlik › Erişilebilirlik'ten istediğiniz an kaldırabilirsiniz.",
+            "Pusu nudges the pointer in place while you're idle. macOS asks \"Pusu would like to control this computer\" for this; if you allow it, apps like Teams see you as active. Pusu sends no other clicks or keys. You can remove the permission anytime in Privacy & Security › Accessibility."
+        )
+        alert.addButton(withTitle: L("Devam", "Continue"))
+        alert.runModal()
+        // İzin penceresini macOS ancak bir olay gönderilmeye çalışılınca açar.
+        SyntheticActivity().nudge()
     }
 
     // MARK: - Actions

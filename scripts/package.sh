@@ -11,6 +11,15 @@ cd "$(dirname "$0")/.."
 
 scripts/build.sh release
 
+# Yayın, kalıcı imzayla çıkmalı: ad-hoc imzalı bir sürüm kullanıcıların verdiği izinleri
+# sıfırlar ve sonraki güncellemelerin imza eşleşmesini bozar.
+if codesign -dvv build/Pusu.app 2>&1 | grep -q "^Signature=adhoc"; then
+    [ "${PUSU_ALLOW_ADHOC:-0}" = "1" ] || {
+        echo "Pusu ad-hoc imzalandı; 'Pusu Code Signing' sertifikası anahtar zincirinde yok (bkz. HANDOFF)." >&2
+        exit 1
+    }
+fi
+
 APP="build/Pusu.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 DIST="dist"

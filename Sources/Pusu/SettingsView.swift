@@ -487,8 +487,8 @@ private struct SessionTabView: View {
             SettingRow(
                 title: L("Uygulamaları aktif tut", "Keep apps active"),
                 subtitle: L(
-                    "Teams gibi uygulamalar seni boşta saymaz, ekran koruyucu başlamaz: bir dakika dokunmazsan Pusu imleci yerinde oynatır. Uzak erişim modunda ve kilit ekranında çalışmaz.",
-                    "Apps like Teams won't mark you idle and the screen saver won't start: after a minute without input, Pusu nudges the pointer in place. Off in remote access mode and on the lock screen."
+                    "Teams gibi uygulamalar seni boşta saymaz, ekran koruyucu başlamaz: bir dakika dokunmazsan Pusu imleci yerinde oynatır. macOS açarken bir kez izin ister. Uzak erişim modunda ve kilit ekranında çalışmaz.",
+                    "Apps like Teams won't mark you idle and the screen saver won't start: after a minute without input, Pusu nudges the pointer in place. macOS asks for permission once when you turn it on. Off in remote access mode and on the lock screen."
                 )
             ) {
                 SettingsToggle(title: L("Uygulamaları aktif tut", "Keep apps active"), isOn: $settings.keepAppsActive)
