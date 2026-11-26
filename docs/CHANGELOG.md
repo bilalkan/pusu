@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.9 — 2026-11-27
 
 - **Permissions are remembered across updates.** Pusu is now signed with its own fixed certificate instead of a new ad-hoc signature for every build, so macOS recognizes each update as the same app. The input permission for "Keep apps active" (and any other permission you give Pusu) is asked once and kept. Updating from 1.0.8 asks one last time.
 - Turning on "Keep apps active" explains the permission and shows macOS's prompt right away, instead of at a random moment a minute later.
