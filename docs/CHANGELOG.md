@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.8 — 2026-11-26
 
 - **One-click updates.** When a new version is out, "New version…" in the menu (or `pusu update`) shows the release notes and an Install button: Pusu downloads the new version from GitHub, checks its signature, replaces itself and relaunches. A session that was on keeps going with the same end time. The daily check and its privacy are unchanged; nothing is downloaded until you click Install. Homebrew installs update the same way (the cask now says `auto_updates`). Updates use [Sparkle](https://sparkle-project.org).
 - **Keep apps active.** New option (menu › Options and Settings): after about a minute without input, Pusu nudges the pointer in place, so apps like Teams don't mark you Away and the screen saver doesn't start. Power assertions alone don't reset the idle time those apps read. No permission is needed. It's off in remote access mode (the event would light up the dark display) and on the lock screen.
