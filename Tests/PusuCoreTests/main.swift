@@ -26,6 +26,10 @@ func expectNil<T>(_ value: T?, _ message: String, line: UInt = #line) {
 }
 
 func runChecks(_ name: String, _ body: () -> Void) {
+    // CI'da süreç öldürülürse hangi bölümde kaldığı görünsün (stderr tamponlanmaz).
+    if ProcessInfo.processInfo.environment["CI"] != nil {
+        FileHandle.standardError.write("· \(name)\n".data(using: .utf8)!)
+    }
     body()
 }
 

@@ -18,7 +18,16 @@ jobs:
         run: swift --version
 
       - name: Testler
-        run: swift run PusuTests
+        run: |
+          swift build --product PusuTests
+          .build/debug/PusuTests || {
+            status=$?
+            echo "PusuTests exit $status"
+            codesign -dvv .build/debug/PusuTests 2>&1 || true
+            /usr/bin/log show --last 2m --style compact --predicate 'eventMessage CONTAINS[c] "PusuTests" OR process == "kernel" AND eventMessage CONTAINS[c] "kill"' 2>/dev/null | tail -40 || true
+            ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | tail -5
+            exit $status
+          }
 
       - name: Universal paket
         run: scripts/build.sh release
