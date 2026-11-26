@@ -304,6 +304,7 @@ runChecks("Tern watcher") { runTernWatcherChecks() }
 runChecks("Keyboard light") { runKeyboardLightChecks() }
 runChecks("Keep apps active") { runAppActivityChecks() }
 runChecks("Manual sleep") { runManualSleepChecks() }
+runChecks("Relaunch after update") { runRelaunchChecks() }
 runChecks("Command delivery") { runCommandDeliveryChecks() }
 runChecks("Helper watch") { runHelperWatchChecks() }
 

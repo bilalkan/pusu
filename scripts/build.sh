@@ -49,6 +49,13 @@ cp "Resources/Icons/$CONCEPT/Pusu.icns" "$APP/Contents/Resources/Pusu.icns"
 cp "Resources/Icons/$CONCEPT/pusu-icon-1024.png" "$APP/Contents/Resources/pusu-icon-1024.png"
 plutil -replace PusuIconConcept -string "$CONCEPT" "$APP/Contents/Info.plist"
 
+# Sparkle (uygulama içi güncelleme). Pusu sandbox'lı değil: XPC servislerine gerek yok
+# (Sparkle belgeleri), çıkarılır. Kalan Autoupdate ve Updater.app aşağıda imzalanır.
+mkdir -p "$APP/Contents/Frameworks"
+ditto "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
+rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" \
+       "$APP/Contents/Frameworks/Sparkle.framework/XPCServices"
+
 # Metinler kodda iki dilli; bu klasörler macOS'un uygulamayı Türkçe/İngilizce
 # olarak tanıması (dil seçimi, sistem diyalogları) için gereklidir.
 for LANG_CODE in en tr; do
@@ -68,6 +75,10 @@ if [ -n "${PUSU_SIGN_IDENTITY:-}" ]; then
 else
     SIGN_ARGS=(--force --sign - --timestamp=none)
 fi
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+codesign "${SIGN_ARGS[@]}" "$SPARKLE/Versions/B/Autoupdate"
+codesign "${SIGN_ARGS[@]}" "$SPARKLE/Versions/B/Updater.app"
+codesign "${SIGN_ARGS[@]}" "$SPARKLE"
 codesign "${SIGN_ARGS[@]}" --identifier local.kan.pusu.helper "$APP/Contents/Resources/pusu-helper"
 # İmzalı yardımcının özeti Info.plist'e yazılır; kurulumda root bu özeti doğrular.
 HELPER_SHA="$(shasum -a 256 "$APP/Contents/Resources/pusu-helper" | awk '{print $1}')"

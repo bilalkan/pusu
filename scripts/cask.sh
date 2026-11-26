@@ -22,6 +22,8 @@ cask "pusu" do
   desc "Menu bar app that keeps the system awake"
   homepage "https://github.com/bilalkan/pusu"
 
+  # Pusu kendini Sparkle ile günceller; brew upgrade bu yüzden atlar (--greedy hariç).
+  auto_updates true
   depends_on macos: :ventura
 
   app "Pusu.app"

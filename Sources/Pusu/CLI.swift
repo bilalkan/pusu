@@ -204,6 +204,7 @@ enum CLI {
           pusu lock                Ekranı kilitle
           pusu wake                Ekranı uyandır
           pusu settings            Ayarlar penceresini aç
+          pusu update              Güncellemeleri denetle (yeni sürüm varsa kurmayı önerir)
           pusu diagnostics         Tanılama bilgisini yazdır
           pusu log [sayı|clear]    Son olayları yazdır (son 3 gün; varsayılan 50 satır)
           pusu install-helper      Yönetici yardımcısını kur (parola sorar)
@@ -226,6 +227,7 @@ enum CLI {
           pusu lock                Lock the screen
           pusu wake                Wake the display
           pusu settings            Open the Settings window
+          pusu update              Check for updates (offers to install a new version)
           pusu diagnostics         Print diagnostics
           pusu log [count|clear]   Print recent events (last 3 days; 50 lines by default)
           pusu install-helper      Install the privileged helper (asks for your password)

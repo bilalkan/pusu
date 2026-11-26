@@ -464,6 +464,39 @@ func runManualSleepChecks() {
     }
 }
 
+func runRelaunchChecks() {
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    do {
+        let harness = SessionHarness()
+        expectNil(harness.controller.relaunchState(now: now), "kapalıyken kayıt yok")
+        harness.controller.start(PusuDuration(minutes: 30))
+        let state = harness.controller.relaunchState(now: now)
+        expect(state?.endDate != nil, "süreli oturumun bitişi kaydedilir")
+        harness.controller.stop(reason: .quit)
+        expect(harness.controller.resume(RelaunchState(endDate: Date().addingTimeInterval(600), lidMode: false, savedAt: now)), "süreli oturum sürer")
+        expect(harness.controller.isOn, "oturum açık")
+        if let remaining = harness.controller.remaining {
+            expect(remaining > 590 && remaining <= 600, "kalan süre korunur")
+        } else {
+            expect(false, "süreli oturumun kalan süresi olmalı")
+        }
+        harness.controller.stop()
+        expect(!harness.controller.resume(RelaunchState(endDate: Date().addingTimeInterval(-5), lidMode: false, savedAt: now)), "süresi dolmuşsa açılmaz")
+        expect(harness.controller.resume(RelaunchState(endDate: nil, lidMode: false, savedAt: now)), "süresiz sürer")
+        expectNil(harness.controller.remaining, "süresiz kalır")
+        harness.tearDown()
+    }
+    do {
+        let defaults = UserDefaults(suiteName: "pusu.tests.relaunch")!
+        RelaunchState(endDate: nil, lidMode: true, savedAt: now).save(to: defaults)
+        expectEqual(RelaunchState.take(from: defaults, now: now.addingTimeInterval(5))?.lidMode, true, "kayıt okunur")
+        expectNil(RelaunchState.take(from: defaults, now: now.addingTimeInterval(5)), "kayıt bir kez kullanılır")
+        RelaunchState(endDate: nil, lidMode: false, savedAt: now).save(to: defaults)
+        expectNil(RelaunchState.take(from: defaults, now: now.addingTimeInterval(3_600)), "eski kayıt yok sayılır")
+        removeDefaultsSuite("pusu.tests.relaunch")
+    }
+}
+
 func runKeyboardLightChecks() {
     expect(KeyboardLightPolicy.shouldDarken(saved: 0.4), "yanan klavye ışığı karartılır")
     expect(!KeyboardLightPolicy.shouldDarken(saved: 0), "zaten kapalı ışığa dokunulmaz")

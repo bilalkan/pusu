@@ -55,6 +55,9 @@ fi
 
 (cd "$DIST" && shasum -a 256 "Pusu-$VERSION.zip" "Pusu-$VERSION.dmg" > SHA256SUMS)
 
+# Sparkle appcast'i (uygulama içi güncelleme): sürümle birlikte yüklenir.
+scripts/appcast.sh
+
 echo ""
 echo "Sürüm $VERSION hazır:"
 cat "$DIST/SHA256SUMS"

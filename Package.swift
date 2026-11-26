@@ -8,6 +8,10 @@ let package = Package(
         .executable(name: "Pusu", targets: ["Pusu"]),
         .executable(name: "pusu-helper", targets: ["PusuHelper"]),
     ],
+    dependencies: [
+        // Uygulama içi güncelleme: indirir, EdDSA imzasını doğrular, kurar ve yeniden açar.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
+    ],
     targets: [
         .target(
             name: "PusuVirtualDisplay",
@@ -20,8 +24,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "Pusu",
-            dependencies: ["PusuCore"],
+            dependencies: ["PusuCore", .product(name: "Sparkle", package: "Sparkle")],
             linkerSettings: [
+                // Sparkle.framework paketin Contents/Frameworks klasöründe.
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("Carbon"),

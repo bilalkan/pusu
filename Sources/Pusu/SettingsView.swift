@@ -945,8 +945,8 @@ private struct PreferencesTabView: View {
         SettingsCard(
             title: L("Güncellemeler", "Updates"),
             subtitle: L(
-                "Pusu yalnızca GitHub'dan en son sürüm numarasını okur; kimlik ya da kullanım verisi gönderilmez.",
-                "Pusu only reads the latest version number from GitHub; no identifying or usage data is sent."
+                "Pusu yalnızca GitHub'dan en son sürüm numarasını okur; kimlik ya da kullanım verisi gönderilmez. Güncellemeyi onaylarsanız yeni sürüm GitHub'dan indirilir, imzası doğrulanır ve Pusu kendini yeniden açar.",
+                "Pusu only reads the latest version number from GitHub; no identifying or usage data is sent. If you accept an update, the new version is downloaded from GitHub, its signature is checked and Pusu relaunches itself."
             )
         ) {
             SettingRow(

@@ -1181,3 +1181,67 @@ public enum Diagnostics {
         return lines.joined(separator: "\n")
     }
 }
+
+/// Uygulama içi güncellemede (Sparkle Pusu'yu kapatıp yenisini açar) açık oturumun yeni sürümde
+/// kaldığı yerden sürmesi için kaydedilen durum. Uzak erişim modu sürdürülmez: güncellemeyi
+/// onaylamak için ekran zaten kullanılıyordur.
+public struct RelaunchState: Codable, Equatable {
+    public var endDate: Date?
+    public var lidMode: Bool
+    public var savedAt: Date
+
+    public init(endDate: Date?, lidMode: Bool, savedAt: Date) {
+        self.endDate = endDate
+        self.lidMode = lidMode
+        self.savedAt = savedAt
+    }
+
+    static let key = "pusu.relaunchState"
+    /// Bundan eski bir kayıt (güncelleme yarıda kaldıysa) yok sayılır.
+    static let maxAge: TimeInterval = 10 * 60
+
+    public func save(to defaults: UserDefaults = .standard) {
+        if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.key) }
+    }
+
+    /// Kaydı okur ve siler (bir kez kullanılır).
+    public static func take(from defaults: UserDefaults = .standard, now: Date = Date()) -> RelaunchState? {
+        defer { defaults.removeObject(forKey: key) }
+        guard let data = defaults.data(forKey: key),
+              let state = try? JSONDecoder().decode(RelaunchState.self, from: data),
+              now.timeIntervalSince(state.savedAt) >= 0,
+              now.timeIntervalSince(state.savedAt) < maxAge
+        else { return nil }
+        return state
+    }
+}
+
+extension SessionController {
+    /// Güncelleme öncesi kaydedilecek durum (kapalıysa `nil`).
+    public func relaunchState(now: Date = Date()) -> RelaunchState? {
+        guard isOn else { return nil }
+        return RelaunchState(endDate: endDate, lidMode: lidMode, savedAt: now)
+    }
+
+    /// Güncellemeden sonra oturumu sürdürür. Süresi dolmuşsa açmaz. Kapak modu yalnızca yardımcı
+    /// varsa, parola sormadan yeniden açılır.
+    /// - Returns: Oturum açıldı mı?
+    @discardableResult
+    public func resume(_ state: RelaunchState, now: Date = Date()) -> Bool {
+        let duration: PusuDuration
+        if let end = state.endDate {
+            let left = end.timeIntervalSince(now)
+            guard left >= 1 else { return false }
+            duration = PusuDuration(seconds: left)
+        } else {
+            duration = .indefinite
+        }
+        start(duration)
+        guard isOn else { return false }
+        log("Resumed after the update")
+        if state.lidMode, lid.helperAvailable, !lidMode {
+            setLidModeAsync(true, allowPrompt: false) { _ in }
+        }
+        return true
+    }
+}

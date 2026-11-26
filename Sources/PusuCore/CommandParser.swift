@@ -11,6 +11,8 @@ public enum PusuCommand: Equatable {
     case wake
     case settings
     case diagnostics
+    /// Güncellemeleri denetle; yeni sürüm varsa Sparkle penceresini aç (kurulum yine onay ister).
+    case update
     /// Kapak modu: `true` aç, `false` kapat, `nil` aç/kapat.
     case lid(on: Bool?)
 
@@ -26,6 +28,7 @@ public enum PusuCommand: Equatable {
         case .wake: return "wake"
         case .settings: return "settings"
         case .diagnostics: return "diagnostics"
+        case .update: return "update"
         case .lid(let on):
             switch on {
             case .some(true): return "lid-on"
@@ -54,6 +57,7 @@ public enum PusuCommand: Equatable {
         case "wake": self = .wake
         case "settings": self = .settings
         case "diagnostics": self = .diagnostics
+        case "update": self = .update
         case "lid": self = .lid(on: nil)
         case "lid-on": self = .lid(on: true)
         case "lid-off": self = .lid(on: false)
@@ -96,6 +100,7 @@ public enum CommandParser {
             case "vnc": return .vnc
             case "wake": return .wake
             case "settings": return .settings
+            case "update": return .update
             case "lid":
                 switch args.dropFirst().first?.lowercased() {
                 case nil: return .lid(on: nil)

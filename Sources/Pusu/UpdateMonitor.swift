@@ -1,6 +1,42 @@
 import AppKit
 import Combine
 import PusuCore
+import Sparkle
+
+/// Sparkle köprüsü. Zamanlanmış denetimi Sparkle yapmaz (Info.plist: `SUEnableAutomaticChecks`
+/// false); ne zaman bakılacağına `UpdateMonitor` karar verir. Sparkle yalnızca yeni sürüm
+/// bulunduğunda devreye girer: sürüm notlarını gösterir, paketi indirir, EdDSA imzasını
+/// `SUPublicEDKey` ile doğrular, Pusu'yu kapatıp yenisini kurar ve yeniden açar.
+final class SparkleBridge: NSObject, SPUUpdaterDelegate {
+    /// Yalnızca yerel deneme için: `defaults write local.kan.pusu pusu.updateFeedURL http://127.0.0.1:…`.
+    /// İmza doğrulaması değişmez; başka bir adresten gelen paket de aynı anahtarla imzalı olmalı.
+    static let feedOverrideKey = "pusu.updateFeedURL"
+
+    private lazy var controller = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: self,
+        userDriverDelegate: nil
+    )
+
+    /// Sparkle Pusu'yu kapatıp yeni sürümü açmadan hemen önce çağrılır.
+    var onWillRelaunch: (() -> Void)?
+
+    func start() { _ = controller }
+
+    func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        onWillRelaunch?()
+    }
+
+    /// Sparkle'ın güncelleme penceresini açar (yeni sürüm yoksa "güncel" der).
+    func showUpdate() {
+        AppActivation.activate()
+        controller.checkForUpdates(nil)
+    }
+
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        UserDefaults.standard.string(forKey: Self.feedOverrideKey)
+    }
+}
 
 /// İsteğe bağlı güncelleme kontrolünü zamanlar ve sonucu menüye, bildirime ve Ayarlar'a yayar.
 final class UpdateMonitor: ObservableObject {
@@ -23,6 +59,7 @@ final class UpdateMonitor: ObservableObject {
     private let currentVersion: String
     private let notify: (String, String) -> Void
     private var timer: Timer?
+    let sparkle = SparkleBridge()
 
     init(settings: SettingsStore, currentVersion: String, notify: @escaping (String, String) -> Void) {
         self.settings = settings
@@ -32,6 +69,7 @@ final class UpdateMonitor: ObservableObject {
 
     /// Açılışta ve saatte bir: izin varsa ve son kontrolden bu yana bir gün geçtiyse kontrol eder.
     func start() {
+        sparkle.start()
         checkIfDue()
         let timer = Timer(timeInterval: 60 * 60, repeats: true) { [weak self] _ in
             self?.checkIfDue()
@@ -106,49 +144,14 @@ final class UpdateMonitor: ObservableObject {
         settings.notifiedUpdateVersion = update.version
         notify(
             L("Pusu \(update.version) yayında", "Pusu \(update.version) is available"),
-            UpdateChecker.installedWithHomebrew()
-                ? L("Güncellemek için: brew upgrade --cask pusu", "To update: brew upgrade --cask pusu")
-                : L("Menüden ayrıntılara bakabilirsiniz.", "See the details from the Pusu menu.")
+            L("Menüden tek tıkla güncelleyebilirsiniz.", "Update with one click from the Pusu menu.")
         )
     }
 
-    /// Menüdeki "Yeni sürüm" öğesi: Homebrew kurulumunda komutu gösterir, değilse sürüm sayfasını açar.
+    /// Menüdeki "Yeni sürüm" öğesi: Sparkle sürüm notlarını gösterir, onaylanınca indirip kurar.
+    /// Homebrew kurulumunda da aynı yol kullanılır (cask `auto_updates true`).
     func presentUpdate() {
-        guard let update = available else { return }
-        guard UpdateChecker.installedWithHomebrew() else {
-            AppActivation.activate()
-            let alert = NSAlert()
-            alert.messageText = L("Pusu \(update.version) yayında", "Pusu \(update.version) is available")
-            alert.informativeText = L(
-                "Şu an \(currentVersion) kullanıyorsunuz. Yeni sürümü sürümler sayfasından indirip Uygulamalar klasörüne sürükleyin.",
-                "You're running \(currentVersion). Download the new version from the releases page and drag it to Applications."
-            )
-            alert.addButton(withTitle: L("İndirme Sayfası", "Download Page"))
-            alert.addButton(withTitle: L("Daha Sonra", "Later"))
-            if alert.runModal() == .alertFirstButtonReturn {
-                NSWorkspace.shared.open(update.releaseURL)
-            }
-            return
-        }
-        AppActivation.activate()
-        let alert = NSAlert()
-        alert.messageText = L("Pusu \(update.version) yayında", "Pusu \(update.version) is available")
-        alert.informativeText = L(
-            "Pusu Homebrew ile kurulu. Güncellemek için Terminal'de şunu çalıştırın:\n\n\(UpdateChecker.homebrewUpgradeCommand)",
-            "Pusu was installed with Homebrew. To update, run this in Terminal:\n\n\(UpdateChecker.homebrewUpgradeCommand)"
-        )
-        alert.addButton(withTitle: L("Komutu Kopyala", "Copy Command"))
-        alert.addButton(withTitle: L("Sürüm Notları", "Release Notes"))
-        alert.addButton(withTitle: L("Kapat", "Close"))
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(UpdateChecker.homebrewUpgradeCommand, forType: .string)
-        case .alertSecondButtonReturn:
-            NSWorkspace.shared.open(update.releaseURL)
-        default:
-            break
-        }
+        sparkle.showUpdate()
     }
 
     /// Kullanıcıya bir kez sorulur (yeni kurulumda karşılamadan sonra, güncellemede ilk açılışta).

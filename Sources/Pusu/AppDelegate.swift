@@ -175,7 +175,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.updates.start()
         }
 
-        if settings.autoStartOnLaunch, pendingCommand == nil {
+        // Sparkle güncellemesinden sonra açık oturum kaldığı yerden sürer.
+        updates.sparkle.onWillRelaunch = { [weak self] in
+            self?.session.relaunchState()?.save()
+        }
+        if let resume = RelaunchState.take() {
+            session.resume(resume)
+        } else if settings.autoStartOnLaunch, pendingCommand == nil {
             session.start(settings.defaultDuration)
         }
     }
@@ -762,6 +768,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showSettings()
         case .diagnostics:
             copyDiagnostics()
+        case .update:
+            updates.presentUpdate()
         case .lid(let on):
             let target = on ?? !session.lidMode
             guard target != session.lidMode else { return }

@@ -52,5 +52,13 @@
 	<string>NSApplication</string>
 	<key>PusuIconConcept</key>
 	<string>A</string>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/bilalkan/pusu/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>7d1lcpUIrG8MjAzH2ZdAGi6vqpdtgtlnqF3r3qfhXds=</string>
 </dict>
 </plist>
