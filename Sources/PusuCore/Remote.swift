@@ -111,6 +111,27 @@ enum KeyboardBacklight {
     }
 }
 
+/// Klavye ışığını karartma ve geri yükleme kuralları. Işık geçici olarak 0'a çekilince macOS onu
+/// "bastırılmış" sayar; otomatik parlaklık da tuşa basmak da yeniden yakmaz, yalnızca sıfırdan büyük
+/// bir değer yakar. Bu yüzden 0 hiçbir zaman "geri yüklenmez".
+public enum KeyboardLightPolicy {
+    static let off: Float = 0.001
+
+    /// Işık zaten kapalıysa (ör. aydınlık odada otomatik parlaklık) ona dokunulmaz.
+    public static func shouldDarken(saved: Float) -> Bool { saved > off }
+
+    /// Karanlık modda ışık yandığında (otomatik parlaklık ya da tuş) geri yüklenecek değer.
+    public static func savedAfterLighting(saved: Float, current: Float) -> Float {
+        saved > off ? saved : current
+    }
+
+    /// Karartma bitince ayarlanacak değer; `nil` ise ışığa dokunulmaz.
+    public static func restoreValue(saved: Float?) -> Float? {
+        guard let saved, saved > off else { return nil }
+        return saved
+    }
+}
+
 public final class RemoteController: RemoteControlling {
 
     /// Locks the current console session through the same private entry point
@@ -203,7 +224,7 @@ public final class RemoteController: RemoteControlling {
                 defaults.synchronize()
             }
         }
-        if savedKeyboard != nil { KeyboardBacklight.set(0) }
+        if let savedKeyboard, KeyboardLightPolicy.shouldDarken(saved: savedKeyboard) { KeyboardBacklight.set(0) }
         darkActive = true
         // Siyah renk eğrisi yalnızca fiziksel panele giden görüntüyü etkiler; ekran görüntüsü ve
         // uzak paylaşım normal kalır. Süreç kapanınca macOS bunu kendiliğinden geri alır. Yalnızca
@@ -222,7 +243,12 @@ public final class RemoteController: RemoteControlling {
     public func maintainDarkPanel() {
         guard darkActive else { return }
         // Klavye ışığı otomatik ayar ya da tuşla yanarsa yeniden kapatılır.
-        if savedKeyboard != nil, let value = KeyboardBacklight.get(), value > 0.001 {
+        if let saved = savedKeyboard, let value = KeyboardBacklight.get(), value > KeyboardLightPolicy.off {
+            let updated = KeyboardLightPolicy.savedAfterLighting(saved: saved, current: value)
+            if updated != saved {
+                savedKeyboard = updated
+                defaults.set(Double(updated), forKey: Self.savedKeyboardKey)
+            }
             KeyboardBacklight.set(0)
         }
         for display in Self.activeDisplays() where display != virtualDisplay?.displayID {
@@ -344,7 +370,7 @@ public final class RemoteController: RemoteControlling {
             _ = DisplayBrightness.set(display, value)
         }
         savedBrightness = [:]
-        if let savedKeyboard { KeyboardBacklight.set(savedKeyboard) }
+        if let value = KeyboardLightPolicy.restoreValue(saved: savedKeyboard) { KeyboardBacklight.set(value) }
         savedKeyboard = nil
         darkActive = false
         defaults.removeObject(forKey: Self.savedBrightnessKey)
@@ -356,7 +382,7 @@ public final class RemoteController: RemoteControlling {
     @discardableResult
     public func restoreAfterCrashIfNeeded() -> Bool {
         if let keyboard = defaults.object(forKey: Self.savedKeyboardKey) as? Double, (0...1).contains(keyboard) {
-            KeyboardBacklight.set(Float(keyboard))
+            if let value = KeyboardLightPolicy.restoreValue(saved: Float(keyboard)) { KeyboardBacklight.set(value) }
             defaults.removeObject(forKey: Self.savedKeyboardKey)
         }
         guard let stored = defaults.dictionary(forKey: Self.savedBrightnessKey) as? [String: Double] else {

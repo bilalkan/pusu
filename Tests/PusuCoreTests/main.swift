@@ -301,6 +301,9 @@ runChecks("Review regressions") { runReviewRegressionChecks() }
 runChecks("Event log") { runEventLogChecks() }
 runChecks("Remote mode") { runRemoteModeChecks() }
 runChecks("Tern watcher") { runTernWatcherChecks() }
+runChecks("Keyboard light") { runKeyboardLightChecks() }
+runChecks("Keep apps active") { runAppActivityChecks() }
+runChecks("Manual sleep") { runManualSleepChecks() }
 runChecks("Command delivery") { runCommandDeliveryChecks() }
 runChecks("Helper watch") { runHelperWatchChecks() }
 

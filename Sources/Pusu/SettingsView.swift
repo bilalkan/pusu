@@ -483,6 +483,26 @@ private struct SessionTabView: View {
             ) {
                 SettingsToggle(title: L("Oturum kilitlenmesin", "Keep the session unlocked"), isOn: $settings.keepSessionUnlocked)
             }
+            Divider()
+            SettingRow(
+                title: L("Uygulamaları aktif tut", "Keep apps active"),
+                subtitle: L(
+                    "Teams gibi uygulamalar seni boşta saymaz, ekran koruyucu başlamaz: bir dakika dokunmazsan Pusu imleci yerinde oynatır. Uzak erişim modunda ve kilit ekranında çalışmaz.",
+                    "Apps like Teams won't mark you idle and the screen saver won't start: after a minute without input, Pusu nudges the pointer in place. Off in remote access mode and on the lock screen."
+                )
+            ) {
+                SettingsToggle(title: L("Uygulamaları aktif tut", "Keep apps active"), isOn: $settings.keepAppsActive)
+            }
+            Divider()
+            SettingRow(
+                title: L("Uykuya elle geçince kapat", "Turn off when you put the Mac to sleep"),
+                subtitle: L(
+                    "Uyut menüsü, güç düğmesi ya da (kapak modu kapalıyken) kapağı kapatmak oturumu bitirir. Uyanınca Pusu kapalı olur.",
+                    "Sleep from the Apple menu, the power button or (without lid mode) closing the lid ends the session. Pusu is off when the Mac wakes."
+                )
+            ) {
+                SettingsToggle(title: L("Uykuya elle geçince kapat", "Turn off when you put the Mac to sleep"), isOn: $settings.stopOnManualSleep)
+            }
         }
     }
 

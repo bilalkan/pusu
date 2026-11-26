@@ -9,6 +9,7 @@ public enum SessionStopReason: String, Codable, Equatable {
     case quit
     case error
     case interrupted
+    case sleep
 
     public var label: String {
         switch self {
@@ -19,6 +20,7 @@ public enum SessionStopReason: String, Codable, Equatable {
         case .quit: return L("Uygulama kapandı", "App quit")
         case .error: return L("Hata", "Error")
         case .interrupted: return L("Beklenmedik şekilde sonlandı", "Ended unexpectedly")
+        case .sleep: return L("Mac uyutuldu", "Mac was put to sleep")
         }
     }
 }
@@ -154,6 +156,7 @@ public final class SessionController: NSObject, ObservableObject {
     public let assertions: PowerAsserting
     public let lid: LidControlling
     public let remote: RemoteControlling
+    public let activity: ActivityPosting
     public let history: SessionHistoryStore
     /// Kısa süreli olay günlüğü (`nil`: kayıt tutulmaz; testler sahtesini verir).
     public let events: EventRecording?
@@ -203,6 +206,7 @@ public final class SessionController: NSObject, ObservableObject {
     private var ticker: Timer?
     private var batteryTimer: Timer?
     private var userActivityTimer: Timer?
+    private var activityNudgeLogged = false
     private var tickCounter = 0
 
     /// - Parameters:
@@ -216,6 +220,7 @@ public final class SessionController: NSObject, ObservableObject {
         history: SessionHistoryStore? = nil,
         events: EventRecording? = nil,
         remoteClients: RemoteClientMonitoring? = nil,
+        activity: ActivityPosting = SyntheticActivity(),
         lidClosedReader: @escaping () -> Bool? = { LidStateReader.read().isClosed },
         batteryReader: @escaping () -> BatteryStatus? = BatteryReader.read,
         runtimeWriter: @escaping (RuntimeState) -> Void = RuntimeStateStore.write
@@ -224,6 +229,7 @@ public final class SessionController: NSObject, ObservableObject {
         self.assertions = assertions
         self.lid = lid ?? LidController(settings: settings)
         self.remote = remote
+        self.activity = activity
         self.history = history ?? SessionHistoryStore()
         self.events = events
         self.remoteClients = remoteClients
@@ -976,11 +982,33 @@ public final class SessionController: NSObject, ObservableObject {
         emit(.tick(remaining))
         if tickCounter % 60 == 0 { history.heartbeat(at: now) }
         if tickCounter % 5 == 0 { writeRuntime() }
+        if tickCounter % AppActivityPolicy.checkInterval == 0 { appActivityTick() }
         if remoteBlankActive { remoteTick(now: now) }
     }
 
     @objc private func batteryTick() {
         refreshBattery()
+    }
+
+    /// "Uygulamaları aktif tut": kullanıcı bir süredir dokunmadıysa görünmez bir fare olayı
+    /// gönderir. Uzak erişim modunda gönderilmez: olay karartılan ekranı yeniden yakar (uzaktan
+    /// çalışırken Tern'in gönderdiği olaylar zaten sayılır). Kilit ekranında da gönderilmez.
+    private func appActivityTick() {
+        guard isOn, settings.keepAppsActive, !remoteBlankActive, !remote.isScreenLocked() else { return }
+        guard activity.secondsSinceLastInput() >= AppActivityPolicy.idleThreshold else { return }
+        // Her dakika günlüğe yazılmaz; açılıştan sonra bir kez çalıştığı görülsün yeter.
+        if activity.nudge(), !activityNudgeLogged {
+            activityNudgeLogged = true
+            log("Keep apps active: nudged the pointer in place (idle time reset)")
+        }
+    }
+
+    /// macOS uykuya geçmek üzere. Pusu açıkken boşta uyku engellendiği için bu uyku elle verilmiştir
+    /// (Uyut menüsü, kapak modu kapalıyken kapağı kapatmak, güç düğmesi). Ayar açıksa oturum biter.
+    public func systemWillSleep() {
+        guard isOn, settings.stopOnManualSleep else { return }
+        log("Mac is going to sleep; turning Pusu off")
+        stop(reason: .sleep, allowLidPrompt: false, wake: false)
     }
 
     @objc private func userActivityTick() {
@@ -1066,6 +1094,8 @@ public enum Diagnostics {
         lines.append("SETTINGS")
         lines.append("  keep display awake: \(settings.keepDisplayAwake)")
         lines.append("  keep session unlocked: \(settings.keepSessionUnlocked)")
+        lines.append("  keep apps active: \(settings.keepAppsActive)")
+        lines.append("  stop on manual sleep: \(settings.stopOnManualSleep)")
         lines.append("  remote access: \(settings.remoteKeepsDisplayOn ? "always on, dark" : "sleep until a connection"), lock: \(settings.remoteLockOnBlackout)")
         lines.append("  battery cutoff: \(percent(settings.batteryCutoffEnabled, settings.batteryCutoffPercent))")
         lines.append("  lid battery guard: \(percent(settings.lidBatteryFloorEnabled, settings.lidBatteryFloorPercent))")

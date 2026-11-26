@@ -871,6 +871,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if name == NSWorkspace.didWakeNotification {
                     self?.scheduleHelperCheck(after: 10)
                 }
+                if name == NSWorkspace.willSleepNotification {
+                    self?.session.systemWillSleep()
+                }
             }
             systemObservers.append((workspace, observer))
         }

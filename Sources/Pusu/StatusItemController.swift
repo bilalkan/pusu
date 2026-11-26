@@ -354,6 +354,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             image: "lock.open"
         ))
         menu.addItem(item(
+            L("Uygulamaları aktif tut", "Keep Apps Active"),
+            action: #selector(toggleAppsActive),
+            state: settings.keepAppsActive ? .on : .off,
+            image: "cursorarrow.motionlines"
+        ))
+        menu.addItem(item(
             L("Girişte başlat", "Launch at Login"),
             action: #selector(toggleLaunchAtLogin),
             state: settings.launchAtLogin ? .on : .off,
@@ -503,6 +509,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func toggleDisplay() { settings.keepDisplayAwake.toggle() }
 
     @objc private func toggleUnlocked() { settings.keepSessionUnlocked.toggle() }
+    @objc private func toggleAppsActive() { settings.keepAppsActive.toggle() }
 
     @objc private func toggleBatteryCutoff() { settings.batteryCutoffEnabled.toggle() }
 

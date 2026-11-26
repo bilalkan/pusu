@@ -67,6 +67,18 @@ final class FakeLid: LidControlling {
     }
 }
 
+final class FakeActivity: ActivityPosting {
+    var idleSeconds: TimeInterval = 0
+    private(set) var nudgeCalls = 0
+
+    func secondsSinceLastInput() -> TimeInterval { idleSeconds }
+    func nudge() -> Bool {
+        nudgeCalls += 1
+        idleSeconds = 0
+        return true
+    }
+}
+
 final class FakeRemote: RemoteControlling {
     var sharing: ScreenSharingState = .running
     private(set) var locked = false
@@ -174,6 +186,7 @@ final class SessionHarness {
     let remote = FakeRemote()
     let eventLog = FakeEvents()
     let clients = FakeRemoteClients()
+    let activity = FakeActivity()
     var lidClosed: Bool? = false
     let history: SessionHistoryStore
     var battery: BatteryStatus?
@@ -202,6 +215,7 @@ final class SessionHarness {
             history: history,
             events: eventLog,
             remoteClients: clients,
+            activity: activity,
             lidClosedReader: { [unowned self] in self.lidClosed },
             batteryReader: { [unowned self] in self.battery },
             runtimeWriter: { [unowned self] state in self.runtimeStates.append(state) }

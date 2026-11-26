@@ -46,6 +46,8 @@ public final class SettingsStore: ObservableObject {
     private enum Key: String {
         case keepDisplayAwake = "pusu.keepDisplayAwake"
         case keepSessionUnlocked = "pusu.keepSessionUnlocked"
+        case keepAppsActive = "pusu.keepAppsActive"
+        case stopOnManualSleep = "pusu.stopOnManualSleep"
         case batteryCutoffEnabled = "pusu.batteryCutoffEnabled"
         case batteryCutoffPercent = "pusu.batteryCutoffPercent"
         case lidBatteryFloorEnabled = "pusu.lidBatteryFloorEnabled"
@@ -75,6 +77,14 @@ public final class SettingsStore: ObservableObject {
     }
     @Published public var keepSessionUnlocked: Bool {
         didSet { save(keepSessionUnlocked, .keepSessionUnlocked); onChange?() }
+    }
+    /// Teams, uzak oturumlar vb. "boşta" saymasın diye boştayken görünmez bir fare olayı gönderir.
+    @Published public var keepAppsActive: Bool {
+        didSet { save(keepAppsActive, .keepAppsActive); onChange?() }
+    }
+    /// Mac elle uyutulunca (Uyut menüsü, kapak, güç düğmesi) oturumu kapatır.
+    @Published public var stopOnManualSleep: Bool {
+        didSet { save(stopOnManualSleep, .stopOnManualSleep); onChange?() }
     }
     @Published public var batteryCutoffEnabled: Bool {
         didSet { save(batteryCutoffEnabled, .batteryCutoffEnabled); onChange?() }
@@ -163,6 +173,8 @@ public final class SettingsStore: ObservableObject {
 
         self.keepDisplayAwake = defaults.object(forKey: Key.keepDisplayAwake.rawValue) as? Bool ?? true
         self.keepSessionUnlocked = defaults.object(forKey: Key.keepSessionUnlocked.rawValue) as? Bool ?? false
+        self.keepAppsActive = defaults.object(forKey: Key.keepAppsActive.rawValue) as? Bool ?? false
+        self.stopOnManualSleep = defaults.object(forKey: Key.stopOnManualSleep.rawValue) as? Bool ?? false
         self.batteryCutoffEnabled = defaults.object(forKey: Key.batteryCutoffEnabled.rawValue) as? Bool ?? true
         self.batteryCutoffPercent = defaults.object(forKey: Key.batteryCutoffPercent.rawValue) as? Int ?? 10
         self.lidBatteryFloorEnabled = defaults.object(forKey: Key.lidBatteryFloorEnabled.rawValue) as? Bool ?? true

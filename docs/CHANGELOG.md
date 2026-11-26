@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Keep apps active.** New option (menu › Options and Settings): after about a minute without input, Pusu nudges the pointer in place, so apps like Teams don't mark you Away and the screen saver doesn't start. Power assertions alone don't reset the idle time those apps read. No permission is needed. It's off in remote access mode (the event would light up the dark display) and on the lock screen.
+- **Turn off when you put the Mac to sleep.** New option in Settings: sleeping the Mac from the Apple menu, the power button or (without lid mode) by closing the lid ends the session.
+- **Keyboard light comes back after remote access mode.** If the keyboard light was off when the mode started (for example auto-brightness in a bright room), Pusu restored it to 0, and macOS treats a light set to 0 as switched off: neither auto-brightness nor a key press turned it back on. Pusu now never sets the keyboard light to 0 when restoring and leaves an already-dark light alone; if auto-brightness lights it while the mode is on, that level is restored.
+
 ## 1.0.7 — 2026-11-24
 
 - **No more blinking display when Tern keeps reconnecting.** After a Tern update, its old remote server can keep connecting and dropping every second or so. In remote access mode Pusu used to wake the display on every connect and put it to sleep (and relock) on every disconnect, so the display blinked, the screen relocked right after being unlocked, and Pusu could stop responding. Now Pusu waits 5 seconds after a disconnect before putting the display to sleep (and doesn't while another connection is open), and a client that connects four times within 20 seconds is ignored for 5 minutes. Touching the Mac's own keyboard or trackpad still ends remote access mode right away.

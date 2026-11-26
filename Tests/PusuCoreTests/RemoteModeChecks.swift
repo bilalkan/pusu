@@ -398,6 +398,82 @@ func runRemoteModeChecks() {
     }
 }
 
+func runAppActivityChecks() {
+    func ticks(_ harness: SessionHarness, _ count: Int) {
+        for _ in 0..<count { harness.controller.processTick() }
+    }
+
+    do {
+        let harness = SessionHarness()
+        harness.controller.start(.indefinite)
+        harness.activity.idleSeconds = 120
+        ticks(harness, 60)
+        expectEqual(harness.activity.nudgeCalls, 0, "ayar kapalıyken olay gönderilmez")
+        harness.tearDown()
+    }
+
+    do {
+        let harness = SessionHarness { $0.keepAppsActive = true }
+        harness.controller.start(.indefinite)
+        harness.activity.idleSeconds = 10
+        ticks(harness, 30)
+        expectEqual(harness.activity.nudgeCalls, 0, "kullanıcı çalışırken araya girilmez")
+        harness.activity.idleSeconds = 55
+        ticks(harness, 30)
+        expectEqual(harness.activity.nudgeCalls, 1, "boştayken imleç oynatılır")
+
+        harness.activity.idleSeconds = 120
+        harness.controller.enterRemoteMode(lock: false)
+        ticks(harness, 60)
+        expectEqual(harness.activity.nudgeCalls, 1, "uzak erişim modunda olay gönderilmez (ekranı yakar)")
+        harness.controller.exitRemoteMode(wake: false)
+
+        _ = harness.remote.lockScreen()
+        ticks(harness, 60)
+        expectEqual(harness.activity.nudgeCalls, 1, "kilit ekranında olay gönderilmez")
+        harness.remote.unlock()
+        ticks(harness, 30)
+        expectEqual(harness.activity.nudgeCalls, 2, "kilit açılınca yeniden çalışır")
+
+        harness.controller.stop(reason: .user)
+        harness.activity.idleSeconds = 120
+        ticks(harness, 60)
+        expectEqual(harness.activity.nudgeCalls, 2, "Pusu kapalıyken olay gönderilmez")
+        harness.tearDown()
+    }
+}
+
+func runManualSleepChecks() {
+    do {
+        let harness = SessionHarness()
+        harness.controller.start(.indefinite)
+        harness.controller.systemWillSleep()
+        expect(harness.controller.isOn, "ayar kapalıyken uyku oturumu bitirmez")
+        harness.tearDown()
+    }
+    do {
+        let harness = SessionHarness { $0.stopOnManualSleep = true }
+        harness.controller.systemWillSleep()
+        expect(!harness.controller.isOn, "kapalıyken uyku bir şey yapmaz")
+        harness.controller.start(.indefinite)
+        harness.controller.systemWillSleep()
+        expect(!harness.controller.isOn, "elle uykuda oturum biter")
+        expectEqual(harness.stopReasons, [.sleep], "bitiş sebebi: Mac uyutuldu")
+        expectEqual(harness.assertions.isSystemHeld, false, "uyku engeli bırakılır")
+        harness.tearDown()
+    }
+}
+
+func runKeyboardLightChecks() {
+    expect(KeyboardLightPolicy.shouldDarken(saved: 0.4), "yanan klavye ışığı karartılır")
+    expect(!KeyboardLightPolicy.shouldDarken(saved: 0), "zaten kapalı ışığa dokunulmaz")
+    expectEqual(KeyboardLightPolicy.restoreValue(saved: 0.4), 0.4, "kaydedilen değer geri yüklenir")
+    expectNil(KeyboardLightPolicy.restoreValue(saved: 0), "0 geri yüklenmez (ışığı bastırır)")
+    expectNil(KeyboardLightPolicy.restoreValue(saved: nil), "değer yoksa dokunulmaz")
+    expectEqual(KeyboardLightPolicy.savedAfterLighting(saved: 0, current: 0.3), 0.3, "karanlıkta otomatik yanan değer geri yüklenir")
+    expectEqual(KeyboardLightPolicy.savedAfterLighting(saved: 0.5, current: 0.3), 0.5, "önceki değer korunur")
+}
+
 func runTernWatcherChecks() {
     // Satır ayrıştırma (gerçek Tern biçimi)
     let attached = "2026-11-21T14:36:10.957+03:00 36503  INFO               main stencil_tern: daemon client attached id=96 kind=Remote"
